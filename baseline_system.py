@@ -16,6 +16,7 @@ from swagger_client.models import (
     Probe,
     MedicalSupply,
 )
+import BERTSimilarity.BERTSimilarity as bertsimilarity
 
 from algorithms.llm_baseline import (
     LLMBaseline,
@@ -149,6 +150,21 @@ def _map_explanation_to_available_supply(
     return selection
 
 
+def force_choice_with_bert(text: str, choices: List[str]):
+    bertsim = bertsimilarity.BERTSimilarity()
+
+    top_score = -float('inf')
+    top_choice = None
+    for choice in choices:
+        score = bertsim.calculate_distance(text, choice)
+
+        if score > top_score:
+            top_score = score
+            top_choice = choice
+
+    return top_choice
+
+
 def run_baseline_system(api_endpoint, username, model):
     _config = Configuration()
     _config.host = api_endpoint
@@ -177,7 +193,8 @@ def run_baseline_system(api_endpoint, username, model):
         raw_response = llm_baseline.run_inference(prompt)
 
         print("* ADM Raw response: {}".format(raw_response))
-        selected_patient_id = select_first_mentioned_patient(raw_response)
+        selected_patient_id = force_choice_with_bert(
+            raw_response, list(adm_knowledge.untreated_patients()))
 
         if selected_patient_id is not None:
             print("* ADM Selected: '{}'".format(selected_patient_id))
@@ -191,8 +208,8 @@ def run_baseline_system(api_endpoint, username, model):
                 list(adm_knowledge.untreated_patients()))
             print("** Selected: '{}'".format(selected_patient_id))
 
-        explanation = _map_explanation_to_available_supply(
-            raw_response, adm_knowledge.supplies, fallback_to_random=True)
+        explanation = force_choice_with_bert(
+            raw_response, [s.name for s in adm_knowledge.supplies])
 
         print("** Mapped explanation: '{}'".format(explanation))
 
