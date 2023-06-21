@@ -115,7 +115,7 @@ def run_baseline_system_local_filepath(
             state,
             probe_data['prompt'],
             scenario_data['state']['casualties'],
-            options=probe_data.get('options') if probe_type == ProbeType.MultipleChoice else None,  # noqa: 501
+            options=probe_data.get('options') if probe_type == ProbeType.MultipleChoice.value else None,  # noqa: 501
             alignment_target=alignment_target_data)
 
         if print_details:
@@ -146,7 +146,8 @@ def run_baseline_system_local_filepath(
                     chosen_option['value']), file=sys.stderr)
                 print(file=sys.stderr)
 
-        print(json.dumps(chosen_option, indent=2), file=sys.stderr)
+        if chosen_option is not None:
+            print(json.dumps(chosen_option, indent=2), file=sys.stderr)
 
 
 def force_choice_with_bert(text: str, choices: List[str]):
