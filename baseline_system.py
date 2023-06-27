@@ -94,6 +94,10 @@ def main():
                         type=str,
                         default="gpt-j",
                         help="LLM Baseline model to use")
+    parser.add_argument('-t', '--align-to-target',
+                        action='store_true',
+                        default=False,
+                        help="Align algorithm to target KDMAs")
 
     run_baseline_system(**vars(parser.parse_args()))
 
@@ -106,6 +110,10 @@ def retrieve_scenario(client, username):
 
 def retrieve_probe(client, scenario_id):
     return client.get_probe(scenario_id)
+
+
+def retrieve_alignment_target(client, scenario_id):
+    return client.get_alignment_target(scenario_id)
 
 
 def answer_probe(client,
@@ -179,7 +187,7 @@ def force_choice_with_bert(text: str, choices: List[str]):
     return top_choice_idx, top_choice
 
 
-def run_baseline_system(api_endpoint, username, model):
+def run_baseline_system(api_endpoint, username, model, align_to_target=False):
     # Needed to silence BERT warning messages, see: https://stackoverflow.com/questions/67546911/python-bert-error-some-weights-of-the-model-checkpoint-at-were-not-used-when # noqa
     from transformers import logging
     logging.set_verbosity_error()
@@ -192,6 +200,10 @@ def run_baseline_system(api_endpoint, username, model):
     scenario = retrieve_scenario(client, username)
     adm_knowledge = adm_knowledge_from_scenario(scenario)
 
+    if align_to_target:
+        alignment_target = retrieve_alignment_target(client, scenario.id)
+        adm_knowledge.alignment_target = alignment_target
+
     llm_baseline = LLMBaseline(
         device="cuda", model_use=model, distributed=False)
     llm_baseline.load_model()
@@ -201,9 +213,13 @@ def run_baseline_system(api_endpoint, username, model):
         adm_knowledge.probes_received.append(current_probe)
 
         if model == "instruct-gpt-j":
-            prompt = prepare_prompt_instruct_gpt_j(scenario, current_probe)
+            prompt = prepare_prompt_instruct_gpt_j(
+                scenario, current_probe,
+                alignment_target=adm_knowledge.alignment_target)
         else:
-            prompt = prepare_prompt(scenario, current_probe)
+            prompt = prepare_prompt(
+                scenario, current_probe,
+                alignment_target=adm_knowledge.alignment_target)
 
         print("* Prompt for ADM: {}".format(prompt))
 
