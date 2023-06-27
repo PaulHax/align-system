@@ -31,8 +31,8 @@ def select_first_mentioned_patient(generated_text):
 
 # May need to pass additional information (e.g. patient info)
 def prepare_prompt(scenario, probe):
-    scenario_description = scenario.description
-    question = probe.question
+    scenario_description = scenario.state.unstructured
+    question = probe.prompt
 
     return f"""
 Here is a scenario related to diaster relief. We need to find the next step with right moral reasoning and give reason why : {scenario_description}
@@ -42,8 +42,8 @@ Here is a scenario related to diaster relief. We need to find the next step with
 
 # May need to pass additional information (e.g. patient info)
 def prepare_prompt_instruct_gpt_j(scenario, probe):
-    scenario_description = scenario.description
-    question = probe.question
+    scenario_description = scenario.state.unstructured
+    question = probe.prompt
 
     return f"""
 Here is a scenario related to diaster relief : {scenario_description}
