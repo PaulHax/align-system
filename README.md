@@ -50,7 +50,7 @@ below:
 
 ```
 $ python baseline_system.py
-usage: baseline_system.py [-h] [-a API_ENDPOINT] [-u USERNAME] [-m MODEL]
+usage: baseline_system.py [-h] [-a API_ENDPOINT] [-u USERNAME] [-m MODEL] [-t]
 
 Simple LLM baseline system
 
@@ -62,6 +62,8 @@ options:
                         ADM Username (provided to TA3 API server, default: "ALIGN-ADM")
   -m MODEL, --model MODEL
                         LLM Baseline model to use
+  -t, --align-to-target
+                        Align algorithm to target KDMAs
 ```
 
 An example invocation of the system:
