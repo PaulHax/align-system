@@ -6,15 +6,19 @@ from enum import Enum
 import re
 import random
 
-from swagger_client import ItmMvpApi
+from swagger_client import ItmTa2EvalApi
 from swagger_client.configuration import Configuration
 from swagger_client.api_client import ApiClient
-from swagger_client.models import (
+from swagger_client import (
     Scenario,
+    State,
+    Casualty,
+    Supplies,
     Environment,
-    Patient,
     Probe,
-    MedicalSupply,
+    ProbeOption,
+    ProbeResponse,
+    AlignmentTarget
 )
 import BERTSimilarity.BERTSimilarity as bertsimilarity
 
@@ -22,7 +26,6 @@ from algorithms.llm_baseline import (
     LLMBaseline,
     prepare_prompt,
     prepare_prompt_instruct_gpt_j,
-    select_first_mentioned_patient,
 )
 
 # Copy-paste from CACI's `itm_adm_scenario_runner.py` script; ideally
@@ -35,16 +38,16 @@ class ADMKnowledge:
     # Scenario
     scenario_id: str = None
     scenario: Scenario = None
+    scenario_complete: bool = False
 
     # Info
     description: str = None
     environment: Environment = None
 
-    # Patients
-    patients: List[Patient] = None
-    all_patient_ids: Set[str] = None
-    treated_patient_ids: Set[str] = None
-    treated_all_patients: bool = False
+    # casualties
+    casualties: List[Casualty] = None
+    all_casualty_ids: Set[str] = None
+    treated_casualty_ids: Set[str] = None
 
     # Probes
     current_probe: Probe = None
@@ -53,14 +56,12 @@ class ADMKnowledge:
     probes_answered: int = 0
 
     # Supplies
-    supplies: List[MedicalSupply] = None
+    supplies: List[Supplies] = None
 
-    def check_treated_all_patients(self):
-        return self.all_patient_ids.issubset(
-            self.treated_patient_ids)
+    alignment_target: AlignmentTarget = None
 
-    def untreated_patients(self):
-        return self.all_patient_ids - self.treated_patient_ids
+    probe_options: List[ProbeOption] = None
+    probe_choices: List[str] = None
 
 
 # Copy-paste from CACI's `itm_scenario_runner.py` script; ideally
@@ -93,6 +94,10 @@ def main():
                         type=str,
                         default="gpt-j",
                         help="LLM Baseline model to use")
+    parser.add_argument('-t', '--align-to-target',
+                        action='store_true',
+                        default=False,
+                        help="Align algorithm to target KDMAs")
 
     run_baseline_system(**vars(parser.parse_args()))
 
@@ -107,24 +112,39 @@ def retrieve_probe(client, scenario_id):
     return client.get_probe(scenario_id)
 
 
-def answer_probe(client, probe_id, patient_id, explanation):
-    client.respond_to_probe(
-        probe_id,
-        patient_id,
-        explanation=explanation)
+def retrieve_alignment_target(client, scenario_id):
+    return client.get_alignment_target(scenario_id)
+
+
+def answer_probe(client,
+                 scenario_id,
+                 probe_id,
+                 explanation,
+                 selected_choice_id=None):
+    response_data = {
+        'scenario_id': scenario_id,
+        'probe_id': probe_id,
+        'justification': explanation}
+
+    if selected_choice_id is not None:
+        response_data['choice'] = selected_choice_id
+
+    return client.respond_to_probe(body=ProbeResponse(**response_data))
 
 
 def adm_knowledge_from_scenario(scenario):
     adm_knowledge: ADMKnowledge = ADMKnowledge()
+
+    state: State = scenario.state
     adm_knowledge.scenario_id = scenario.id
-    adm_knowledge.patients = scenario.patients
-    adm_knowledge.all_patient_ids =\
-        {patient.id for patient in scenario.patients}
-    adm_knowledge.treated_patient_ids = set()
+    adm_knowledge.casualties = state.casualties
+    adm_knowledge.all_casualty_ids =\
+        {casualty.id for casualty in state.casualties}
+    adm_knowledge.treated_casualty_ids = set()
     adm_knowledge.probes_received = []
-    adm_knowledge.supplies = scenario.medical_supplies
-    adm_knowledge.environment = scenario.environment
-    adm_knowledge.description = scenario.description
+    adm_knowledge.supplies = state.supplies
+    adm_knowledge.environment = state.environment
+    adm_knowledge.description = state.mission.unstructured
 
     return adm_knowledge
 
@@ -155,71 +175,73 @@ def force_choice_with_bert(text: str, choices: List[str]):
 
     top_score = -float('inf')
     top_choice = None
-    for choice in choices:
+    top_choice_idx = None
+    for i, choice in enumerate(choices):
         score = bertsim.calculate_distance(text, choice)
 
         if score > top_score:
             top_score = score
             top_choice = choice
+            top_choice_idx = i
 
-    return top_choice
+    return top_choice_idx, top_choice
 
 
-def run_baseline_system(api_endpoint, username, model):
+def run_baseline_system(api_endpoint, username, model, align_to_target=False):
+    # Needed to silence BERT warning messages, see: https://stackoverflow.com/questions/67546911/python-bert-error-some-weights-of-the-model-checkpoint-at-were-not-used-when # noqa
+    from transformers import logging
+    logging.set_verbosity_error()
+
     _config = Configuration()
     _config.host = api_endpoint
     _api_client = ApiClient(configuration=_config)
-    client = ItmMvpApi(api_client=_api_client)
+    client = ItmTa2EvalApi(api_client=_api_client)
 
     scenario = retrieve_scenario(client, username)
     adm_knowledge = adm_knowledge_from_scenario(scenario)
+
+    if align_to_target:
+        alignment_target = retrieve_alignment_target(client, scenario.id)
+        adm_knowledge.alignment_target = alignment_target
 
     llm_baseline = LLMBaseline(
         device="cuda", model_use=model, distributed=False)
     llm_baseline.load_model()
 
-    # Break if we've treated all patients
-    while not adm_knowledge.check_treated_all_patients():
+    while not adm_knowledge.scenario_complete:
         current_probe = retrieve_probe(client, scenario.id)
         adm_knowledge.probes_received.append(current_probe)
 
         if model == "instruct-gpt-j":
-            prompt = prepare_prompt_instruct_gpt_j(scenario, current_probe)
+            prompt = prepare_prompt_instruct_gpt_j(
+                scenario, current_probe,
+                alignment_target=adm_knowledge.alignment_target)
         else:
-            prompt = prepare_prompt(scenario, current_probe)
+            prompt = prepare_prompt(
+                scenario, current_probe,
+                alignment_target=adm_knowledge.alignment_target)
 
         print("* Prompt for ADM: {}".format(prompt))
 
         raw_response = llm_baseline.run_inference(prompt)
 
         print("* ADM Raw response: {}".format(raw_response))
-        selected_patient_id = force_choice_with_bert(
-            raw_response, list(adm_knowledge.untreated_patients()))
 
-        if selected_patient_id is not None:
-            print("* ADM Selected: '{}'".format(selected_patient_id))
+        if current_probe.type == 'MultipleChoice':
+            selected_choice_idx, selected_choice = force_choice_with_bert(
+                raw_response, [o.value for o in current_probe.options])
+            selected_choice_id = current_probe.options[selected_choice_idx].id
 
-        # Just pick first untreated patient if unable to parse patient
-        # ID from model response, or if patient has already been treated
-        if(selected_patient_id is None
-           or selected_patient_id in adm_knowledge.treated_patient_ids):
-            print("* Picking random patient ..")
-            selected_patient_id = random.choice(
-                list(adm_knowledge.untreated_patients()))
-            print("** Selected: '{}'".format(selected_patient_id))
-
-        explanation = force_choice_with_bert(
-            raw_response, [s.name for s in adm_knowledge.supplies])
-
-        print("** Mapped explanation: '{}'".format(explanation))
+            print("* ADM Selected: '{}'".format(selected_choice))
 
         print()
-        answer_probe(client,
-                     current_probe.id,
-                     selected_patient_id,
-                     explanation=explanation)
+        response = answer_probe(client,
+                                scenario.id,
+                                current_probe.id,
+                                selected_choice_id=selected_choice_id,
+                                explanation=raw_response)
 
-        adm_knowledge.treated_patient_ids.add(selected_patient_id)
+        adm_knowledge.scenario_complete = response.scenario_complete
 
 
 if __name__ == "__main__":

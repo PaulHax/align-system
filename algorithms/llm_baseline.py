@@ -30,9 +30,14 @@ def select_first_mentioned_patient(generated_text):
 
 
 # May need to pass additional information (e.g. patient info)
-def prepare_prompt(scenario, probe):
-    scenario_description = scenario.description
-    question = probe.question
+def prepare_prompt(scenario, probe, alignment_target=None):
+    scenario_description = scenario.state.unstructured
+    question = probe.prompt
+
+    if alignment_target is not None:
+        question = "{}; {}".format(
+            _build_alignment_target_string(alignment_target.to_dict()),
+            question).capitalize()
 
     return f"""
 Here is a scenario related to diaster relief. We need to find the next step with right moral reasoning and give reason why : {scenario_description}
@@ -41,14 +46,48 @@ Here is a scenario related to diaster relief. We need to find the next step with
 
 
 # May need to pass additional information (e.g. patient info)
-def prepare_prompt_instruct_gpt_j(scenario, probe):
-    scenario_description = scenario.description
-    question = probe.question
+def prepare_prompt_instruct_gpt_j(scenario, probe, alignment_target=None):
+    scenario_description = scenario.state.unstructured
+    question = probe.prompt
+
+    if alignment_target is not None:
+        question = "{}; {}".format(
+            _build_alignment_target_string(alignment_target.to_dict()),
+            question).capitalize()
 
     return f"""
 Here is a scenario related to diaster relief : {scenario_description}
 
 {question}"""
+
+
+def _bin_kdma_value(value):
+    # Used to map numeric KDMA values to text for injection into
+    # prompt
+    if value <= 0:
+        return "no "
+    elif value >= 3:
+        return "heavy "
+    else:
+        return ""
+
+
+def _build_alignment_target_string(alignment_target):
+    *kdma_values, last_kdma_value = alignment_target['kdma_values']
+
+    alignment_target_string_pieces = ["with"]
+    for a in kdma_values:
+        alignment_target_string_pieces.append(" {}emphasis on {}, ".format(
+            _bin_kdma_value(a['value']), a['kdma']))
+
+    if len(kdma_values) > 0:
+        alignment_target_string_pieces.append('and')
+
+    alignment_target_string_pieces.append(" {}emphasis on {}".format(
+        _bin_kdma_value(last_kdma_value['value']),
+        last_kdma_value['kdma']))
+
+    return ''.join(alignment_target_string_pieces)
 
 
 class LLMBaseline:
