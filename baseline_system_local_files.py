@@ -3,11 +3,11 @@ import json
 import sys
 from typing import List
 from enum import Enum
-from contextlib import redirect_stdout, redirect_stderr
 
 import BERTSimilarity.BERTSimilarity as bertsimilarity
 
 from algorithms.llm_baseline import LLMBaseline
+from algorithms.llama_index import LlamaIndex
 
 
 class ProbeType(Enum):
@@ -38,6 +38,15 @@ def main():
                         type=str,
                         default="gpt-j",
                         help="LLM Baseline model to use")
+    parser.add_argument('-a', '--algorithm',
+                        type=str,
+                        default="llm_baseline",
+                        help="Algorithm to use")
+    parser.add_argument('-A', '--algorithm-kwargs',
+                        type=str,
+                        required=False,
+                        help="JSON encoded dictionary of kwargs for algorithm "
+                             "initialization")
 
     run_baseline_system_local_filepath(**vars(parser.parse_args()))
 
@@ -49,7 +58,9 @@ def run_baseline_system_local_filepath(
         scenario_filepath,
         model,
         alignment_target_filepath=None,
-        print_details=False):
+        print_details=False,
+        algorithm="llm_baseline",
+        algorithm_kwargs=None):
     with open(scenario_filepath) as f:
         scenario_data = json.load(f)
 
@@ -77,9 +88,20 @@ def run_baseline_system_local_filepath(
             print(file=sys.stderr)
 
     # Load the system / model
-    llm_baseline = LLMBaseline(
-        device="cuda", model_use=model, distributed=False)
-    llm_baseline.load_model()
+    algorithm_kwargs_parsed = {}
+    if algorithm_kwargs is not None:
+        algorithm_kwargs_parsed = json.loads(algorithm_kwargs)
+
+    if algorithm == "llm_baseline":
+        algorithm = LLMBaseline(
+            device="cuda", model_use=model, distributed=False,
+            **algorithm_kwargs_parsed)
+    elif algorithm == "llama_index":
+        algorithm = LlamaIndex(
+            device="cuda", model_name=model,
+            **algorithm_kwargs_parsed)
+
+    algorithm.load_model()
 
     # Needed to silence BERT warning messages, see: https://stackoverflow.com/questions/67546911/python-bert-error-some-weights-of-the-model-checkpoint-at-were-not-used-when # noqa
     from transformers import logging
@@ -121,7 +143,7 @@ def run_baseline_system_local_filepath(
             print(prompt_for_system, file=sys.stderr)
             print(file=sys.stderr)
 
-        raw_response = llm_baseline.run_inference(prompt_for_system)
+        raw_response = str(algorithm.run_inference(prompt_for_system))
 
         chosen_option = None
         if probe_type == ProbeType.MultipleChoice.value:
