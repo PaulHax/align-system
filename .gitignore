@@ -1,0 +1,4 @@
+run.bash
+
+venv/
+__pycache__/
