@@ -50,7 +50,7 @@ below:
 
 ```
 $ python baseline_system.py
-usage: baseline_system.py [-h] [-e API_ENDPOINT] [-u USERNAME] [-m MODEL] [-t] [-a ALGORITHM] [-A ALGORITHM_KWARGS]
+usage: baseline_system.py [-h] [-e API_ENDPOINT] [-u USERNAME] [-m MODEL] [-t] [-a ALGORITHM] [-A ALGORITHM_KWARGS] [--similarity-measure SIMILARITY_MEASURE] [-s SESSION_TYPE]
 
 Simple LLM baseline system
 
@@ -68,6 +68,10 @@ options:
                         Algorithm to use
   -A ALGORITHM_KWARGS, --algorithm-kwargs ALGORITHM_KWARGS
                         JSON encoded dictionary of kwargs for algorithm initialization
+  --similarity-measure SIMILARITY_MEASURE
+                        Similarity measure to use (default: 'bert')
+  -s SESSION_TYPE, --session-type SESSION_TYPE
+                        TA3 API Session Type (default: "eval")
 ```
 
 An example invocation of the system:
