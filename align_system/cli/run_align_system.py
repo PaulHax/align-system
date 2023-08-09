@@ -46,8 +46,7 @@ def run_align_system(interface,
     scenario_dict = scenario.to_dict()
 
     if align_to_target:
-        alignment_target = scenario.get_alignment_target()
-        alignment_target_dict = alignment_target.dict()
+        alignment_target_dict = scenario.get_alignment_target()
 
     force_choice_func = build_force_choice_func(similarity_measure)
 
