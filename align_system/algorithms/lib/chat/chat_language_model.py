@@ -20,7 +20,7 @@ class ChatLanguageModel(LanguageModel):
     #     # self.dialog_tokenizer = dialog_tokenizers[model_name](tokenizer)
 
     def generate_responses(self, 
-                           dialogs: List[Dict[str, str]], 
+                           dialogs: List[List[Dict[str, str]]], 
                            log_file: Optional[TextIO] = None, 
                            max_new_tokens: int = 512, 
                            temperature: float = 0.6) -> List[str]:
@@ -100,7 +100,7 @@ class ChatLanguageModel(LanguageModel):
 
     def generate_from_template(
         self,
-        template_files: Union[List[str], str],
+        templates: Union[List[str], str],
         substitution_dicts: Union[List[Dict[str, str]], Dict[str, str]],
         parse_generation_fn: Optional[Callable[[str], str]] = None,
         batch_size: int = 5,
@@ -112,7 +112,7 @@ class ChatLanguageModel(LanguageModel):
         """
         Generates responses for given templates with substitutions.
 
-        :param template_files: Template files to use for generation.
+        :param templates: Template strings to use for generation.
         :param substitution_dicts: Substitution dictionaries for the templates.
         :param parse_generation_fn: Function to parse the generated responses.
         :param batch_size: Batch size for generating responses.
@@ -126,15 +126,15 @@ class ChatLanguageModel(LanguageModel):
         if isinstance(substitution_dicts, dict):
             substitution_dicts = [substitution_dicts]
 
-        if isinstance(template_files, str):
-            template_files = [template_files] * len(substitution_dicts)
+        if isinstance(templates, str):
+            templates = [templates] * len(substitution_dicts)
 
-        assert len(template_files) == len(substitution_dicts), 'Number of templates and substitutions do not match'
+        assert len(templates) == len(substitution_dicts), 'Number of templates and substitutions do not match'
 
         # Create a dialogue for each template/substitution pair
         dialogs = {
-            i: dialog_from_string(format_template(read_template(template_file), **substitutions))
-            for i, (template_file, substitutions) in enumerate(zip(template_files, substitution_dicts))
+            i: dialog_from_string(format_template(template, **substitutions))
+            for i, (template, substitutions) in enumerate(zip(templates, substitution_dicts))
         }
 
         outputs = {}

@@ -4,6 +4,7 @@ import os
 from typing import Union, List, Dict, Tuple, Optional, TextIO
 from align_system.algorithms.lib.chat.chat_language_model import ChatLanguageModel
 from align_system.algorithms.lib.aligned_decision_maker import AlignedDecisionMaker
+from align_system.algorithms.lib.util import read_template
 
 class ChatKDMAPredictingADM(ChatLanguageModel, AlignedDecisionMaker):
     
@@ -28,7 +29,7 @@ class ChatKDMAPredictingADM(ChatLanguageModel, AlignedDecisionMaker):
         :return: List of generated predictions.
         """
         return self.generate_from_template(
-            template,
+            read_template(template),
             [
                 {
                     'scenario': scenario_text,
@@ -125,7 +126,7 @@ class ChatKDMAPredictingADM(ChatLanguageModel, AlignedDecisionMaker):
             return response_json
             
         generations = self.generate_from_template(
-            template,
+            read_template(template),
             substitutions,
             parse_kdma_score_response,
             log_file=log_file,

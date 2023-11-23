@@ -1,6 +1,8 @@
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from typing import List, Union, Optional, TextIO
+from typing import List, Union, Optional, TextIO, TypeVar
+
+T = TypeVar('T', bound='LanguageModel')
 
 class LanguageModel:
     """
@@ -11,7 +13,7 @@ class LanguageModel:
     def load_model(cls, 
                    hf_model_name: str, 
                    precision: torch.dtype = torch.float32, 
-                   device: str = 'cuda') -> 'LanguageModel':
+                   device: str = 'cuda') -> T:
         """
         Load the language model.
 
@@ -21,6 +23,16 @@ class LanguageModel:
         :return: Initialized LanguageModel object.
         """
         # Load the model from Huggingface
+        if type(precision) == str and precision != 'auto':
+            precision = {
+                'fp16': torch.float16,
+                'float16': torch.float16,
+                'half': torch.float16,
+                'fp32': torch.float32,
+                'float32': torch.float32,
+                'full': torch.float32,
+            }[precision]
+        
         model = AutoModelForCausalLM.from_pretrained(hf_model_name, torch_dtype=precision)
         tokenizer = AutoTokenizer.from_pretrained(hf_model_name)
         model = model.to(device)
@@ -52,7 +64,7 @@ class LanguageModel:
         :param max_new_tokens: Maximum number of new tokens to be generated.
         :param temperature: Temperature for probability adjustment.
         :param padding: Padding direction, either 'left' or 'right'.
-        :return: Generated text.
+        :return: List of generated texts (not including the prompt).
         """
         # Move to the model's device and unpack
         prompt_token_lists = [

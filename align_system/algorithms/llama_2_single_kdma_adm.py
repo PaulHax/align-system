@@ -701,7 +701,7 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
             choice_scores = Llama2SingleKDMAADM.calculate_votes(responses, choices)
         except Exception as e:
             log.warning(f"Error calculating votes: {e}")
-            choice_scores = None
+            choice_scores = [None] * len(choices)
 
         log.explain("[bold]*CHOICE SCORES*[/bold]",
                     extra={"markup": True})

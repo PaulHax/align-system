@@ -93,3 +93,59 @@ class LlamaIndex:
             bare_template = PromptTemplate("{query_str}")
 
             return self.query_engine.predict(bare_template, query_str=prompt)
+
+
+    def __call__(self, sample, target_kdma_values, **kwargs):
+        prompt = sample['scenario']
+        if sample['state'] is not None:
+            prompt += f'\n{sample["state"]}'
+        prompt += f'\n{sample["probe"]}'
+        
+        prompt += '\nIdentify the integer index of the choice that best completes the request.\n'
+        prompt += 'Choices:\n'
+        
+        choice_strs = [
+            f'{idx}: {choice}'
+            for idx, choice in enumerate(sample['choices'])
+        ]
+        
+        prompt += '\n'.join(choice_strs)
+        
+        log_file = kwargs.get('log_file', None)
+        if log_file:
+            log_file.write(f'Prompt:\n{prompt}\n\n')
+        
+        choice = None
+        n_fail = 0
+        while choice is None:
+            
+            response = str(self.run_inference(prompt))
+            
+            if log_file:
+                log_file.write(f'Response:\n{response}\n\n')
+            
+            # find the first integer in the response
+            for char in response:
+                try:
+                    choice = int(char)
+                    break
+                except ValueError:
+                    pass
+            
+            if choice is not None:
+                if choice > len(sample['choices']) - 1:
+                    choice = None
+            
+            if choice is None:
+                n_fail += 1
+            
+            if n_fail > 10:
+                return {
+                    'choice': 0,
+                    'info': f'Failed to find choice in response: {response}'
+                }
+        
+        return {
+            'choice': choice,
+            'info': response
+        }
