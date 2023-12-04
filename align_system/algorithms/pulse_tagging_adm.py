@@ -96,6 +96,7 @@ class PulseTaggingADM(ChatLanguageModel, AlignedDecisionMaker):
         return -1
     
     def __call__(self, sample, target_kdma_values, **kwargs):
+        # Forgive me David for I have stringed
         start_guide = '''**START Adult Triage Guide for Tagging Casualties**
 
 1. **Initial Assessment: Ability to Walk**
@@ -122,109 +123,156 @@ class PulseTaggingADM(ChatLanguageModel, AlignedDecisionMaker):
 - **DELAYED:** Serious injuries, but not life-threatening and not expected to deteriorate soon.
 - **MINOR:** Minor injuries. May be able to assist in their own care.
 '''
-        sample_1 = '''Casualty vitals:
-Heart Rate: 72
-Respiration Rate: 12
-Systolic Blood Pressure: 114
-Core Body Temperature: 37
-Pulse Pressure Index: 0.07
-Blood Oxygen Partial Pressure: 40
-Glasgow Coma Scale: 15
-Skin Color: normal
-Skin Touch: normal
-Capillary Refill Time: 1
-Radial Pulse Palpability: true''', '''Let's follow the START triage guide:
+        sample_1 = 'Patient is able to walk to the designated safety area.', '''Let's apply the START guide
 
 1. Initial Assessment: Ability to Walk
 
-Because the casualty has a systolic blood pressure greater than 108 they may be able to walk.
+The patient is able to walk, so they can be tagged as MINOR (Green).
 
 2. Spontaneous Breathing Check
 
-The casualty is breathing faster than 5.5 times a minute, so they pass this check.
+The patient is able to walk, so they can be tagged as MINOR (Green).
 
 3. Respiratory Rate Check
 
-The casualty's respiratory rate is 12, which is less than 30, so they pass this check.
+The patient is able to walk, so they can be tagged as MINOR (Green).
 
 4. Perfusion Check
 
-The casualty's capillary refill time is 1, which is normal, so they pass this check.
+The patient is able to walk, so they can be tagged as MINOR (Green).
 
 5. Mental Status Check
 
-The casualty's Glasgow Coma Scale is 15, which indicates a mild brain injury. Becuase the Glasgow Coma Scale is above 11, they should be tagged MINOR (GREEN).
+The patient is able to walk, so they can be tagged as MINOR (Green).
 
-Based on the assessment, the casualty is tagged as MINOR (GREEN).'''
+Conclusion: Tag the casualty as MINOR (Green).'''
 
-        sample_2 = '''Heart Rate: 75.203
-Respiration Rate: 11.858
-Systolic Blood Pressure: 111.791
-Core Body Temperature: 37.058
-Pulse Pressure Index: 0.038
-Blood Oxygen Partial Pressure: 38.643
-Glasgow Coma Scale: 9
-Skin Color: normal
-Skin Touch: normal
-Capillary Refill Time: 1
-Radial Pulse Palpability: True''', '''Let's follow the START triage guide:
+        sample_2 = 'The patient is conscious. Patient has a moderate hemorrhage. You have used a tourniquet to stop the bleeding. Patient is breathing normally. Patient pulse is within the normal range. The patient is able to follow basic commands.', '''Let's apply the START guide
 
 1. Initial Assessment: Ability to Walk
 
-Because the casualty has a systolic blood pressure greater than 108 they may be able to walk
+It is unclear if the patient is able to walk, so I will move on to the next check.
 
 2. Spontaneous Breathing Check
 
-The casualty is breathing faster than 5.5 times a minute, so they pass this check.
+The patient is breathing normally, so they so they should not be tagged as EXPECTANT (Black).
 
 3. Respiratory Rate Check
 
-The casualty's respiratory rate is 11.858, which is less than 30, so they pass this check.
+The patient is breathing normally, which is less than 30 breaths per minute, so I don't need to tag them as IMMEDIATE (Red) just yet.
 
 4. Perfusion Check
 
-The casualty's capillary refill time is 1, which is normal, so they pass this check.
+The patient's pulse is within the normal range, so they will either be tagged RED or YELLOW depending on the Mental Status Check.
 
 5. Mental Status Check
 
-The casualty's Glasgow Coma Scale is under 11, which indicates a mild to moderate brain injury. suggesting either a YELLOW or RED tag. Becuase the Glasgow Coma Scale is above 6.5, they should be tagged DELAYED (YELLOW).
+The casualty follows basic commands, so they should be tagged as DELAYED (Yellow)
 
-Based on the assessment, the casualty is tagged as DELAYED (YELLOW)'''
+Conclusion: Tag the casualty as DELAYED (Yellow)'''
 
-        chat_response = self.generate_responses(
-            dialogs = [[
-                {
-                    'role': 'system',
-                    'content': start_guide
-                },
-                {
-                    'role': 'user',
-                    'content': sample_1[0]
-                },
-                {
-                    'role': 'assistant',
-                    'content': sample_1[1]
-                },
-                {
-                    'role': 'user',
-                    'content': sample_2[0]
-                },
-                {
-                    'role': 'assistant',
-                    'content': sample_2[1]
-                },
-                {
-                    'role': 'user',
-                    'content': convert_to_string(sample['scenario'])
-                }
-            ]]
-        )
+        sample_3 = 'The patient is conscious. Patient is breathing normally. Patient pulse is abnormally high. Capillary refill time is more than 3 seconds. The patient is not able to follow basic commands.', '''Let's apply the START guide
 
-        color_idx = self.identify_tag_color(chat_response[0])
+1. Initial Assessment: Ability to Walk
+
+The patient is not able to walk so they cannot be tagged as MINOR (Green).
+
+2. Spontaneous Breathing Check
+
+The patient is breathing normally so they cannot be tagged as EXPECTANT (Black).
+
+3. Respiratory Rate Check
+
+The patient's respiratory rate is not faster than 30 breaths per minute, so it is possible they should be tagged YELLOW.
+
+4. Perfusion Check
+
+The patient's pulse is abnormally high and capillary refill time is more than 3 seconds, so they do not pass this check which means they should be tagged as IMMEDIATE (Red).
+
+5. Mental Status Check
+
+The patient is not able to follow basic commands, so they do not pass this check.
+
+Conclusion: Tag the casualty as IMMEDIATE (Red)'''
+
+        sample_4 = 'The patient is unconscious. Patient is not breathing. Repositioning the airway did not help. Patient has a moderate hemorrhage. You have used a tourniquet to stop the bleeding. No radial pulse can be detected on the patient. Capillary refill time is more than 3 seconds. The patient is not able to follow basic commands.', '''Let's apply the START guide
+
+1. Initial Assessment: Ability to Walk
+
+The patient is unconscious and not able to walk, so they should not be tagged as MINOR (Green).
+
+2. Spontaneous Breathing Check
+
+The patient is not breathing, so they do not pass this check.
+
+3. Respiratory Rate Check
+
+The patient is not breathing, so they do not pass this check.
+
+4. Perfusion Check
+
+The patient has no radial pulse and capillary refill time is more than 3 seconds, so they do not pass this check which means they should be tagged as IMMEDIATE (Red).
+
+5. Mental Status Check
+
+The patient is unconscious and not able to follow basic commands, so they do not pass this check.
+
+Conclusion: Tag the casualty as IMMEDIATE (Red)'''
+
+        dialogs = [[
+            {
+                'role': 'system',
+                'content': start_guide
+            },
+            {
+                'role': 'user',
+                'content': sample_3[0]
+            },
+            {
+                'role': 'assistant',
+                'content': sample_3[1]
+            },
+            {
+                'role': 'user',
+                'content': sample_1[0]
+            },
+            {
+                'role': 'assistant',
+                'content': sample_1[1]
+            },
+            {
+                'role': 'user',
+                'content': sample_2[0]
+            },
+            {
+                'role': 'assistant',
+                'content': sample_2[1]
+            },
+            {
+                'role': 'user',
+                'content': sample_3[0]
+            },
+            {
+                'role': 'assistant',
+                'content': sample_3[1]
+            },
+            {
+                'role': 'user',
+                'content': sample['scenario']
+            },
+            {
+                'role': 'assistant',
+                'content': 'Let\'s apply the START guide'
+            }
+        ]]
+
+        chat_response = self.generate_responses(dialogs)[0]
+
+        color_idx = self.identify_tag_color(chat_response)
         
         return {
             'choice': color_idx,
             'info': {
-                'generated_reasoning': chat_response[0]
+                'generated_reasoning': chat_response
             }
         }

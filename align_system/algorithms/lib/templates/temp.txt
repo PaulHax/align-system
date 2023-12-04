@@ -1,0 +1,9 @@
+{{ scenario }}
+{{ probe }}
+
+Identify the integer index of the choice that best completes the request.
+Choices:
+
+{% for choice in choices %}
+{{ forloop.counter0 }}: {{ choice }}
+{% endfor %}
