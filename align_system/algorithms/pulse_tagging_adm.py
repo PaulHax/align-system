@@ -211,13 +211,13 @@ The patient is not breathing, so they do not pass this check.
 
 4. Perfusion Check
 
-The patient has no radial pulse and capillary refill time is more than 3 seconds, so they do not pass this check which means they should be tagged as IMMEDIATE (Red).
+The patient has no radial pulse and capillary refill time is more than 3 seconds, so they do not pass this check.
 
 5. Mental Status Check
 
 The patient is unconscious and not able to follow basic commands, so they do not pass this check.
 
-Conclusion: Tag the casualty as IMMEDIATE (Red)'''
+Conclusion: Tag the casualty as EXPECTANT (Black)'''
 
         dialogs = [[
             {
@@ -265,14 +265,38 @@ Conclusion: Tag the casualty as IMMEDIATE (Red)'''
                 'content': 'Let\'s apply the START guide'
             }
         ]]
-
-        chat_response = self.generate_responses(dialogs)[0]
-
-        color_idx = self.identify_tag_color(chat_response)
         
+        
+        
+        n_samples = kwargs.get('n_samples', 1)  # Set the number of samples, default to 5 if not provided
+
+        chat_responses = []  # List to store the generated responses
+
+        
+        chat_responses = self.generate_responses(dialogs * n_samples)
+            # chat_responses.append(response)
+
+        color_counts = {}  # Dictionary to store the count of each color_idx
+
+        for response in chat_responses:
+            color_idx = self.identify_tag_color(response)
+            color_counts[color_idx] = color_counts.get(color_idx, 0) + 1
+
+        most_popular_color_idx = max(color_counts, key=color_counts.get)  # Get the most popular color_idx
+
+        most_popular_reasoning = None
+
+        for response in chat_responses:
+            color_idx = self.identify_tag_color(response)
+            if color_idx == most_popular_color_idx:
+                most_popular_reasoning = response
+                break
+
         return {
-            'choice': color_idx,
+            'choice': most_popular_color_idx,
             'info': {
-                'generated_reasoning': chat_response
+                'generated_reasoning': most_popular_reasoning,
+                'color_counts': color_counts,
+                'all_reasonings': chat_responses,
             }
         }

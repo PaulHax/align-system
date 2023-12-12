@@ -732,8 +732,7 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
         return reasoning, answer_idx
 
 
-    def __call__(self, sample, **kwargs):
-        target_kdmas = sample['target_kdmas']
+    def __call__(self, sample, target_kdma_values, **kwargs):
         prompt = sample['scenario']
         if sample['state'] is not None:
             prompt += f'\n{sample["state"]}'
@@ -745,7 +744,7 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
         reasoning, answer_idx = self.run_aligned_decision_maker_with_voting(
             prompt,
             choices,
-            target_kdmas,
+            target_kdma_values,
         )
 
         return {
