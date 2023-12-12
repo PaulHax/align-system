@@ -3,6 +3,18 @@
 This changelog follows the specifications detailed in: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html), although we have not yet reached a `1.0.0` release.
 
+## Version 0.2.4
+
+### Added
+
+* Created a multi-comparison-adm
+* Created the pulse-tagging-adm
+
+### Changed
+
+* Made Llama Index into an ADM that is compatible with the self-evaluation framework by adding a __call__ method
+
+
 ## Version 0.2.3
 
 ### Added
