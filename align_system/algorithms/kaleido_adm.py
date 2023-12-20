@@ -58,7 +58,12 @@ class MeanDistance2(ChoiceDistanceFunction):
 
 
 DefaultKDMAEstimatorFunction = SimpleKDMAEstimator
+KnownKDMAEstimatorFunctions = [SimpleKDMAEstimator]
+
 DefaultDistanceFunction = RelevanceWeightedDistance
+KnownDistanceFunctions = [RelevanceWeightedDistance,
+                          MeanDistance,
+                          MeanDistance2]
 
 
 class KaleidoADM(AlignedDecisionMaker):
@@ -74,7 +79,9 @@ class KaleidoADM(AlignedDecisionMaker):
                              estimator_fn=DefaultKDMAEstimatorFunction,
                              kdma_descriptions_map=None):
         if isinstance(estimator_fn, str):
-            estimator_fn = vars().get(estimator_fn, estimator_fn)
+            estimator_fn = {fn.__name__: fn for fn
+                            in KnownKDMAEstimatorFunctions}.get(
+                                estimator_fn, estimator_fn)
 
         if issubclass(estimator_fn, EstimateKDMAFunction):
             estimator_fn = estimator_fn()
@@ -136,7 +143,9 @@ class KaleidoADM(AlignedDecisionMaker):
 
     def force_choice(self, kaleido_results, choices, distance_fn=DefaultDistanceFunction):
         if isinstance(distance_fn, str):
-            distance_fn = vars().get(distance_fn, distance_fn)
+            distance_fn = {fn.__name__: fn for fn
+                           in KnownDistanceFunctions}.get(
+                               distance_fn, distance_fn)
 
         if issubclass(distance_fn, ChoiceDistanceFunction):
             distance_fn = distance_fn()
