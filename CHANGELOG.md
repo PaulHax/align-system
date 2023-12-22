@@ -15,6 +15,21 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * Made Llama Index into an ADM that is compatible with the self-evaluation framework by adding a __call__ method
 
 
+## Version 0.2.4
+
+### Added
+
+* Added Kaleido ADM and dedicated Kaleido CLI script
+
+* Added `partial` option to `format_template` function for partial template completion
+
+* Added `allow_extraneous` option to `format_template` function to ignore extraneous kwargs
+
+### Fixed
+
+* Fixed setting the `loglevel` in CLI scripts
+
+
 ## Version 0.2.3
 
 ### Added
