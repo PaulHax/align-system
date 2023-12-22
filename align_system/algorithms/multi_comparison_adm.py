@@ -61,9 +61,14 @@ class MultiComparisonADM(ChatLanguageModel, AlignedDecisionMaker):
             template = f.read()
         
         n = len(choices)
+        # creates a linear range of points from 0 to 10
+        # least aligned option is 0, most aligned option is 10
         points = [round(point/100) for point in range(0, 1000 + int(1000/n), int(1000/(n-1)))]
         predicted_kdmas = {}
         for target_kdma in kdmas:
+            # use python's sort to sort the choices by alignment as determined by the language model
+            # could be inconsistent due to random sampling in the language model
+            # TODO implement self consistency to reduce varaibility in sorting
             sorted_choices = sorted([
                 Option(
                     self,

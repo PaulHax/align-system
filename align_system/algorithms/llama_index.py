@@ -111,19 +111,6 @@ class LlamaIndex:
         
         prompt += '\n'.join(choice_strs)
         
-        
-        '''
-        {{ scenario }}
-        {{ probe }}
-
-        Identify the integer index of the choice that best completes the request.
-        Choices:
-
-        {% for choice in choices %}
-        {{ forloop.counter0 }}: {{ choice }}
-        {% endfor %}
-        '''
-        
         log_file = kwargs.get('log_file', None)
         if log_file:
             log_file.write(f'Prompt:\n{prompt}\n\n')

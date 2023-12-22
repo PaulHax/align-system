@@ -96,7 +96,8 @@ class PulseTaggingADM(ChatLanguageModel, AlignedDecisionMaker):
         return -1
     
     def __call__(self, sample, target_kdma_values, **kwargs):
-        # Forgive me David for I have stringed
+        # The start_guide is a text formatting of the START guide flowchart
+        # TODO move these strings to template filess
         start_guide = '''**START Adult Triage Guide for Tagging Casualties**
 
 1. **Initial Assessment: Ability to Walk**

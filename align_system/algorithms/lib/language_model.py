@@ -2,6 +2,7 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from typing import List, Union, Optional, TextIO, TypeVar
 
+# Using generic type to improve IDE linting of LanguageModel subclasses
 T = TypeVar('T', bound='LanguageModel')
 
 class LanguageModel:
@@ -24,14 +25,19 @@ class LanguageModel:
         """
         # Load the model from Huggingface
         if type(precision) == str and precision != 'auto':
-            precision = {
+            precisions = {
                 'fp16': torch.float16,
                 'float16': torch.float16,
                 'half': torch.float16,
                 'fp32': torch.float32,
                 'float32': torch.float32,
                 'full': torch.float32,
-            }[precision]
+            }
+            
+            if precision not in precisions:
+                raise ValueError(f'Precision must be one of {list(precisions.keys())}, got {precision}')
+            
+            precision = precisions[precision]
         
         model = AutoModelForCausalLM.from_pretrained(hf_model_name, torch_dtype=precision)
         tokenizer = AutoTokenizer.from_pretrained(hf_model_name)
