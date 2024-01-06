@@ -4,6 +4,13 @@ def generate_outputs(dataset, adm, target_kdma_values, **kwargs):
     outputs = []
     for input_, label in dataset:
         # add target kdmas to input without changing the dataset
+        if len(label) == 0 or max(map(len, label)) == 0:
+            outputs.append({
+                'choice': None,
+                'info': 'no_label'
+            })
+            continue
+        
         outputs.append(adm(input_, target_kdma_values, labels=label, **kwargs))
     
     return outputs
@@ -12,6 +19,9 @@ def generate_outputs(dataset, adm, target_kdma_values, **kwargs):
 def get_avg_system_kdmas(dataset, outputs):
     chosen_kdmas = {}
     for output, (input_, label) in zip(outputs, dataset):
+        if len(label) == 0 or max(map(len, label)) == 0:
+            continue
+        
         choice_idx = output['choice']
         label_kdmas = label[choice_idx]
         for kdma_name, kdma_value in label_kdmas.items():

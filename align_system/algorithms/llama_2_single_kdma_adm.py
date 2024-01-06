@@ -16,7 +16,7 @@ from align_system.utils import logging
 log = logging.getLogger(__name__)
 JSON_HIGHLIGHTER = JSONHighlighter()
 
-
+# TODO make this configurable from the config
 kdmas = {
     'basic_knowledge',
     'fairness',
@@ -25,17 +25,29 @@ kdmas = {
     'utilitarianism',
     'mission',
     'denial',
+    'moral_deservingness',
+    'lives_saved',
+    'continuation_of_care'
 }
 
 kdma_remapping = {
     'basicknowledge': 'basic_knowledge',
     'protocolfocus': 'protocol_focus',
     'riskaversion': 'risk_aversion',
+    'moraldeservingness': 'moral_deservingness',
+    'continuationofcare': 'continuation_of_care',
+    'livesaved': 'lives_saved',
 }
 
+# default_system_messages_path=os.path.join(
+#     pathlib.Path(__file__).parent.absolute(), '..',
+#     'prompt_engineering/bbn_alignment_system_messages_v1')
+
+# NOTE temporary way to change which system messages are used
+# TODO make this configurable from the config
 default_system_messages_path=os.path.join(
     pathlib.Path(__file__).parent.absolute(), '..',
-    'prompt_engineering/bbn_alignment_system_messages_v1')
+    'prompt_engineering/single_kdma_adm_system_messges')
 
 def load_system_message(alignment=None,
                         system_messages_path=default_system_messages_path):
@@ -85,7 +97,7 @@ TAGGING_MULTIPLE_CHOICE_JSON_FORMAT = "{\"Reasoning\": \"<Provide a reasoned exp
 
 class Llama2SingleKDMAADM(AlignedDecisionMaker):
 
-    def __init__(self, device='cuda', hf_model='meta-llama/Llama-2-7b-chat-hf', precision='full', temperature=0.7):
+    def __init__(self, device='cuda', hf_model='meta-llama/Llama-2-7b-chat-hf', precision='full', temperature=0.7, **kwargs):
         self.device = device
         self.hf_model = hf_model
         self.temperature = temperature
@@ -228,8 +240,8 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
     def respond_to_dialog(self, dialog, prefix=None):
         if prefix is None:
             prefix = '{"Reasoning": "'
-
-        prompt_tokens = self.chat_prompt_tokens([dialog], return_tensor=False)
+        # prompt_tokens = self.chat_prompt_tokens([dialog], return_tensor=False)
+        prompt_tokens = [self.tokenizer.apply_chat_template(dialog, tokenize=True)]
 
         prompt_length = len(prompt_tokens[0])
 
@@ -309,11 +321,13 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
 
         return generated_outputs
 
-    def aligned_decision_maker(self, question, choices, target_kdmas, n_samples=5, inverse_misaligned=True, shuffle=True, baseline=False):
-        unsupported_kdmas = {kdma_remapping.get(k, k)
-                             for k in target_kdmas.keys()} - kdmas
-        if len(unsupported_kdmas) > 0:
-            raise RuntimeError(f"KDMA(s) {unsupported_kdmas} not supported.")
+    def aligned_decision_maker(self, question, choices, target_kdmas, n_positive_samples=5, n_negative_sampels=5, shuffle=True, baseline=False):
+        
+        if not baseline:
+            unsupported_kdmas = {kdma_remapping.get(k, k)
+                                for k in target_kdmas.keys()} - kdmas
+            if len(unsupported_kdmas) > 0:
+                raise RuntimeError(f"KDMA(s) {unsupported_kdmas} not supported.")
 
         prefix = '{"Reasoning": "Because'
 
@@ -321,20 +335,20 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
 
         logged_aligned_dialog = False
         logged_inverse_misaligned_dialog = False
-        for _ in range(n_samples):
-            system_message_keys = {kdma: 'high' if value > 5 else 'low'
-                                   for kdma, value in target_kdmas.items()}
+        for _ in range(n_positive_samples):
+            if baseline:
+                system_message = load_system_message()
+                system_message_keys = 'baseline'
+                
+            else:
+                system_message_keys = {kdma: 'high' if value > 5 else 'low'
+                                    for kdma, value in target_kdmas.items()}
+                system_message = load_system_message(system_message_keys)
 
             indecies = list(range(len(choices)))
             if shuffle:
                 random.shuffle(indecies)
             shuffled_choices = [choices[i] for i in indecies]
-
-            system_message = load_system_message(system_message_keys)
-
-            if baseline:
-                system_message = load_system_message()
-                system_message_keys = 'baseline'
 
             dialog = self.build_multiple_choice_dialog(
                 question,
@@ -358,39 +372,39 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
                 'alignment': system_message_keys,
                 'aligned': True,
             })
+        
+        for _ in range(n_negative_sampels):
+            system_message_keys = {kdma: 'high' if not value > 5 else 'low'
+                                    for kdma, value in target_kdmas.items()}
 
-            if inverse_misaligned:
-                system_message_keys = {kdma: 'high' if not value > 5 else 'low'
-                                       for kdma, value in target_kdmas.items()}
+            indecies = list(range(len(choices)))
+            if shuffle:
+                random.shuffle(indecies)
+            shuffled_choices = [choices[i] for i in indecies]
 
-                indecies = list(range(len(choices)))
-                if shuffle:
-                    random.shuffle(indecies)
-                shuffled_choices = [choices[i] for i in indecies]
+            inverse_misaligned_dialog = self.build_multiple_choice_dialog(
+                question,
+                shuffled_choices,
+                system_message=load_system_message(system_message_keys))
 
-                inverse_misaligned_dialog = self.build_multiple_choice_dialog(
-                    question,
-                    shuffled_choices,
-                    system_message=load_system_message(system_message_keys))
+            if not logged_inverse_misaligned_dialog:
+                log.debug("[bold]*INVERSE MISALIGNED DIALOG*[/bold]",
+                            extra={"markup": True})
+                self.log_dialog(inverse_misaligned_dialog)
+                logged_inverse_misaligned_dialog = True
 
-                if not logged_inverse_misaligned_dialog:
-                    log.debug("[bold]*INVERSE MISALIGNED DIALOG*[/bold]",
-                              extra={"markup": True})
-                    self.log_dialog(inverse_misaligned_dialog)
-                    logged_inverse_misaligned_dialog = True
+            low_response = self.respond_to_dialog(
+                inverse_misaligned_dialog, prefix=prefix)
 
-                low_response = self.respond_to_dialog(
-                    inverse_misaligned_dialog, prefix=prefix)
-
-                reasoning, answer_idx = Llama2SingleKDMAADM.parse_generated_output(low_response)
-                responses.append({
-                    'response': low_response,
-                    'reasoning': reasoning,
-                    'answer_idx': answer_idx,
-                    'shuffle_indecies': indecies,
-                    'alignment': system_message_keys,
-                    'aligned': False,
-                })
+            reasoning, answer_idx = Llama2SingleKDMAADM.parse_generated_output(low_response)
+            responses.append({
+                'response': low_response,
+                'reasoning': reasoning,
+                'answer_idx': answer_idx,
+                'shuffle_indecies': indecies,
+                'alignment': system_message_keys,
+                'aligned': False,
+            })
 
         return responses
 
@@ -688,13 +702,14 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
             return None
 
     def run_aligned_decision_maker_with_voting(
-            self, prompt, choices, alignment_target):
+            self, prompt, choices, alignment_target, n_positive_samples=5, n_negative_samples=5, baseline=False):
         responses = self.aligned_decision_maker(
             prompt,
             choices,
             alignment_target,
-            inverse_misaligned=True,
-            baseline=False,
+            baseline=baseline,
+            n_positive_samples=n_positive_samples,
+            n_negative_sampels=n_negative_samples,
         )
 
         try:
@@ -740,13 +755,30 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
         prompt += f'\n{sample["probe"]}'
 
         choices = sample['choices']
+        
+        labels = kwargs.get('labels', {})
+        
+        alignment_target = None
+        if target_kdma_values is not None:
+            target_kdma = next(iter(labels[0])) # just use the first label
+            
+            for label in labels:
+                assert target_kdma in label and len(label) == 1, "All labels must have the same KDMA"
+                
+            alignment_target = {
+                target_kdma: target_kdma_values[target_kdma]
+            }
 
         reasoning, answer_idx = self.run_aligned_decision_maker_with_voting(
             prompt,
             choices,
-            target_kdma_values,
+            alignment_target,
+            n_positive_samples=kwargs.get('n_positive_samples', 5),
+            n_negative_samples=kwargs.get('n_negative_samples', 5),
+            baseline=kwargs.get('baseline', False),
         )
 
         return {
-            'choice': answer_idx
+            'choice': int(answer_idx),
+            'info': reasoning
         }
