@@ -21,6 +21,7 @@ kdmas = {
     'basic_knowledge',
     'fairness',
     'protocol_focus',
+    'time_pressure',
     'risk_aversion',
     'utilitarianism',
     'mission',
@@ -37,6 +38,7 @@ kdma_remapping = {
     'moraldeservingness': 'moral_deservingness',
     'continuationofcare': 'continuation_of_care',
     'livesaved': 'lives_saved',
+    'timepressure': 'time_pressure',
 }
 
 # default_system_messages_path=os.path.join(
@@ -760,10 +762,10 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
         
         alignment_target = None
         if target_kdma_values is not None:
-            target_kdma = next(iter(labels[0])) # just use the first label
+            target_kdma = next(iter(next(iter(filter(lambda x: len(x) > 0, labels))))) # get the frist key of the first label that is not empty
             
             for label in labels:
-                assert target_kdma in label and len(label) == 1, "All labels must have the same KDMA"
+                assert len(label) == 0 or (target_kdma in label and len(label) == 1), f'All labels must have the same KDMA: labels={labels}'
                 
             alignment_target = {
                 target_kdma: target_kdma_values[target_kdma]

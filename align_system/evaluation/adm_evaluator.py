@@ -179,7 +179,11 @@ def evaluate(dataset, generated_outputs, target_kdma_values):
     
     for metric in metrics:
         metric_name = metric.__name__
-        results['choice_metrics'][metric_name] = metric(target_kdma_values, system_kdmas)
+        try:
+            results['choice_metrics'][metric_name] = metric(target_kdma_values, system_kdmas)
+        except Exception as e:
+            print(f'Error evaluating metric {metric_name}: {e}')
+            results['choice_metrics'][metric_name] = None
         
     metrics = [
         mean_absolute_error,
@@ -199,7 +203,11 @@ def evaluate(dataset, generated_outputs, target_kdma_values):
             choice_metrics = {}
             for metric in metrics:
                 metric_name = metric.__name__
-                choice_metrics[metric_name] = metric(label_kdmas, predicted_kdma_values)
+                try:
+                    choice_metrics[metric_name] = metric(label_kdmas, predicted_kdma_values)
+                except Exception as e:
+                    print(f'Error evaluating metric {metric_name}: {e}')
+                    choice_metrics[metric_name] = None
         
             per_choice_metrics.append(choice_metrics)
     
