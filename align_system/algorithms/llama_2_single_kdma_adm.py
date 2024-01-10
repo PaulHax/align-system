@@ -715,7 +715,7 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
             'responses': responses,
         }
 
-        answer_idx = np.argmax(results['choice_scores'])
+        answer_idx = int(np.argmax(results['choice_scores']))
         reasoning = None
 
         for r in responses:
@@ -731,13 +731,35 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
 
         return reasoning, answer_idx
 
-
     def __call__(self, sample, target_kdma_values, **kwargs):
         prompt = sample['scenario']
         if sample['state'] is not None:
             prompt += f'\n{sample["state"]}'
 
-        prompt += f'\n{sample["probe"]}'
+        if 'retriever' in kwargs:
+            # retriever_prompt = "How would you treat the following injuries: {}".format(prompt)
+            retriever_prompt = "{}  {}".format(prompt, sample['probe'])
+
+            retriever = kwargs['retriever']
+            retrieved_nodes = retriever.retrieve(retriever_prompt)
+
+            if 'summarizer' in kwargs:
+                summarizer = kwargs['summarizer']
+                summary = summarizer.synthesize(retriever_prompt, nodes=retrieved_nodes)
+
+                log.explain("[bold] ** Retrieval Summary ** [/bold]",
+                            extra={"markup": True})
+                log.explain(summary)
+
+                prompt += "\n#############\n{}\n#############".format(summary)
+
+            else:
+                prompt += "\n#############\n{}\n#############".format(
+                    "\n#############\n".join((n.text for n in retrieved_nodes)))
+
+            prompt += f'\nGiven the scenario and documentation above.. {sample["probe"]}'
+        else:
+            prompt += f'\n{sample["probe"]}'
 
         choices = sample['choices']
 
