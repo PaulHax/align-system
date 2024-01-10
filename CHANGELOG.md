@@ -8,7 +8,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Added
 
 * Created a multi-comparison-adm
+
 * Created the pulse-tagging-adm
+
+* Added stand-alone llama_index retriever component
+
+* Added retrieval to the llama_2_single_kdma_adm algorithm
 
 ### Changed
 
