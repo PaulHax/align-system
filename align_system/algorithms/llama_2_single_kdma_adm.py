@@ -119,9 +119,14 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
             self.tokenizer = tokenizer
         else:
             print('Loading model:', self.hf_model)
-            self.model = AutoModelForCausalLM.from_pretrained(self.hf_model, torch_dtype=self.precision)
+            if self.device == 'auto':
+                self.model = AutoModelForCausalLM.from_pretrained(self.hf_model, torch_dtype=self.precision, device_map='auto')
+            else:
+                self.model = AutoModelForCausalLM.from_pretrained(self.hf_model, torch_dtype=self.precision)
+                self.model = self.model.to(self.device)
+            
             self.tokenizer = AutoTokenizer.from_pretrained(self.hf_model)
-            self.model = self.model.to(self.device)
+            
 
 
     def get_character_ids(self, character_str):
@@ -252,7 +257,8 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
             prompt_tokens[0] += prefix_tokens
 
         prompt_tokens = torch.tensor(prompt_tokens)
-        prompt_tokens = prompt_tokens.to(self.device)
+        if self.device != 'auto':
+            prompt_tokens = prompt_tokens.to(self.device)
 
         outputs = self.model.generate(prompt_tokens, return_dict_in_generate=True, output_scores=True, max_new_tokens=512, temperature=self.temperature)
 
@@ -746,7 +752,7 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
                 reasoning = r['reasoning']
                 break
 
-        return reasoning, answer_idx
+        return reasoning, answer_idx, responses
 
 
     def __call__(self, sample, target_kdma_values, **kwargs):
@@ -771,7 +777,7 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
                 target_kdma: target_kdma_values[target_kdma]
             }
 
-        reasoning, answer_idx = self.run_aligned_decision_maker_with_voting(
+        reasoning, answer_idx, responses = self.run_aligned_decision_maker_with_voting(
             prompt,
             choices,
             alignment_target,
@@ -782,5 +788,8 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
 
         return {
             'choice': int(answer_idx),
-            'info': reasoning
+            'info': {
+                'reasoning': reasoning,
+                'responses': responses,
+            }
         }
