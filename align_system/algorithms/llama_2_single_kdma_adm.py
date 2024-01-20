@@ -5,6 +5,8 @@ import os
 import pathlib
 from align_system.algorithms.lib.aligned_decision_maker import AlignedDecisionMaker
 
+from jinja2.exceptions import TemplateError
+
 from rich.highlighter import JSONHighlighter
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -248,7 +250,27 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
         if prefix is None:
             prefix = '{"Reasoning": "'
         # prompt_tokens = self.chat_prompt_tokens([dialog], return_tensor=False)
-        prompt_tokens = [self.tokenizer.apply_chat_template(dialog, tokenize=True)]
+        try:
+            prompt_tokens = [self.tokenizer.apply_chat_template(dialog, tokenize=True)]
+        except TemplateError:
+            new_dialog = []
+            for message in dialog:
+                if message['role'] == 'system':
+                    message['role'] = 'user'
+                
+                if len(new_dialog) == 0:
+                    new_dialog.append(message)
+                    continue
+
+                last_message = new_dialog[-1]
+                if last_message['role'] == message['role']:
+                    last_message['content'] += '\n\n' + message['content']
+                else:
+                    new_dialog.append(message)
+            dialog = new_dialog
+            print('INPUT\n', dialog)
+            prompt_tokens = [self.tokenizer.apply_chat_template(dialog, tokenize=True)]
+            
 
         prompt_length = len(prompt_tokens[0])
 
@@ -264,6 +286,8 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
 
         # Print the generated model output
         generated_output = self.tokenizer.decode(outputs.sequences[0][prompt_length:])
+
+        print('OUTPUT\n', generated_output)
 
         return generated_output
 
