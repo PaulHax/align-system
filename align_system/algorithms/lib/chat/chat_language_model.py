@@ -116,10 +116,13 @@ class ChatLanguageModel(LanguageModel):
         :param verbose: If True, verbose logging is enabled.
         :return: Generated responses.
         """
+        single_mode = False
         if isinstance(substitution_dicts, dict):
+            single_mode = True
             substitution_dicts = [substitution_dicts]
 
         if isinstance(templates, str):
+            single_mode = True
             templates = [templates] * len(substitution_dicts)
 
         assert len(templates) == len(substitution_dicts), 'Number of templates and substitutions do not match'
@@ -161,7 +164,12 @@ class ChatLanguageModel(LanguageModel):
 
         assert len(outputs) == len(substitution_dicts), 'Unexpected state: number of outputs and substitutions do not match'
 
-        return [
+        outputs = [
             outputs[i]
             for i in range(len(outputs))
         ]
+        
+        if single_mode:
+            outputs = outputs[0]
+        
+        return outputs
