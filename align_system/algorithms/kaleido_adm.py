@@ -1,4 +1,6 @@
 from abc import ABC, abstractmethod
+from functools import reduce
+import inspect
 
 import pandas as pd
 
@@ -94,7 +96,7 @@ class KaleidoADM(AlignedDecisionMaker):
                 "found, or does not implement EstimateKDMAFunction")
 
         if kdma_descriptions_map is None:
-            kdma_descriptions_map = {k: {'description': k} for k in target_kdmas.keys()}
+            kdma_descriptions_map = {k: {'description': k.replace('_', ' ')} for k in target_kdmas.keys()}
 
         rows = []
         for choice in choices:
@@ -147,7 +149,7 @@ class KaleidoADM(AlignedDecisionMaker):
                            in KnownDistanceFunctions}.get(
                                distance_fn, distance_fn)
 
-        if issubclass(distance_fn, ChoiceDistanceFunction):
+        if inspect.isclass(distance_fn) and issubclass(distance_fn, ChoiceDistanceFunction):
             distance_fn = distance_fn()
         elif isinstance(distance_fn, ChoiceDistanceFunction):
             # Already initialized
@@ -223,10 +225,13 @@ class KaleidoADM(AlignedDecisionMaker):
         else:
             raise RuntimeError('Unexpected scenario_data type: {}'.format(type(scenario_data)))
 
+        label_kdmas = reduce(set.union, (choice_kdmas.keys() for choice_kdmas in labels), set())
+        target_kdma_values_in_labels = {k: target_kdma_values[k] for k in label_kdmas}
+
         kaleido_results = self.estimate_kdma_values(
             partial_template,
             sample['choices'],
-            target_kdma_values,
+            target_kdma_values_in_labels,
             kdma_descriptions_map=kdma_descriptions_map)
 
         selected_choice_idx = self.force_choice(
