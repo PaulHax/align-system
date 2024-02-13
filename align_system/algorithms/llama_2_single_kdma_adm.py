@@ -484,97 +484,6 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
         return responses, inference_pairs
 
 
-    # def aligned_decision_maker_batched(self, question, choices, target_kdmas, n_samples=5, inverse_misaligned=True, shuffle=True, baseline=False, batch_size=5):
-    #     unsupported_kdmas = {kdma_remapping.get(k, k)
-    #                          for k in target_kdmas.keys()} - kdmas
-    #     if len(unsupported_kdmas) > 0:
-    #         raise RuntimeError(f"KDMA(s) {unsupported_kdmas} not supported.")
-
-    #     prefix = '{"Reasoning": "Because'
-
-    #     results = []
-
-    #     inputs = []
-
-    #     for _ in range(n_samples):
-    #         system_message_keys = {kdma: 'high' if value > 5 else 'low'
-    #                                for kdma, value in target_kdmas.items()}
-
-    #         indecies = list(range(len(choices)))
-    #         if shuffle:
-    #             random.shuffle(indecies)
-    #         shuffled_choices = [choices[i] for i in indecies]
-
-    #         system_message = load_system_message(system_message_keys)
-
-    #         if baseline:
-    #             system_message = load_system_message()
-    #             system_message_keys = 'baseline'
-
-    #         def callback(high_response):
-    #             reasoning, answer_idx, parse_method = Llama2SingleKDMAADM.parse_generated_output(high_response, len(choices))
-    #             results.append({
-    #                 'response': high_response,
-    #                 'reasoning': reasoning,
-    #                 'answer_idx': answer_idx,
-    #                 'shuffle_indecies': indecies,
-    #                 'alignment': system_message_keys,
-    #                 'aligned': True,
-    #                 'parse_method': parse_method,
-    #             })
-
-    #         inputs.append({
-    #             'question': question,
-    #             'shuffled_choices': shuffled_choices,
-    #             'system_message': system_message,
-    #             'prefix': prefix,
-    #             'callback': callback,
-    #         })
-
-    #         if inverse_misaligned:
-    #             system_message_keys = {kdma: 'high' if not value > 5 else 'low'
-    #                                    for kdma, value in target_kdmas.items()}
-
-    #             indecies = list(range(len(choices)))
-    #             if shuffle:
-    #                 random.shuffle(indecies)
-    #             shuffled_choices = [choices[i] for i in indecies]
-
-    #             def callback(low_response):
-    #                 reasoning, answer_idx, parse_method = Llama2SingleKDMAADM.parse_generated_output(low_response, len(choices))
-    #                 results.append({
-    #                     'response': low_response,
-    #                     'reasoning': reasoning,
-    #                     'answer_idx': answer_idx,
-    #                     'shuffle_indecies': indecies,
-    #                     'alignment': system_message_keys,
-    #                     'aligned': False,
-    #                     'parse_method': parse_method,
-    #                 })
-
-    #             inputs.append({
-    #                 'question': question,
-    #                 'shuffled_choices': shuffled_choices,
-    #                 'system_message': load_system_message(system_message_keys),
-    #                 'prefix': prefix,
-    #                 'callback': callback,
-    #             })
-
-    #     for i in range(0, len(inputs), batch_size):
-    #         responses = self.answer_multiple_choice_batched(
-    #             questions=[sample['question'] for sample in inputs[i:i+batch_size]],
-    #             option_lists=[sample['shuffled_choices'] for sample in inputs[i:i+batch_size]],
-    #             system_messages=[sample['system_message'] for sample in inputs[i:i+batch_size]],
-    #             prefixes = [sample['prefix'] for sample in inputs[i:i+batch_size]]
-    #         )
-
-    #         callbacks = [sample['callback'] for sample in inputs[i:i+batch_size]]
-
-    #         for response, callback in zip(responses, callbacks):
-    #             callback(response)
-
-    #     return results
-
     @staticmethod
     def calculate_votes(responses, choices):
         choice_votes = [0] * len(choices)
@@ -832,12 +741,6 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
         reasoning = None
 
         for r in responses:
-            # if r['answer_idx'] is None:
-            #     continue
-
-            # if int(r['answer_idx']) >= len(r['shuffle_indecies']):
-            #     continue
-            
             assert r['answer_idx'] is not None
             assert int(r['answer_idx']) < len(r['shuffle_indecies'])
 
