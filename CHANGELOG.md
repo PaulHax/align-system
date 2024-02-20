@@ -3,6 +3,19 @@
 This changelog follows the specifications detailed in: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html), although we have not yet reached a `1.0.0` release.
 
+## UPDATED
+
+### Added
+
+* Added bbn pilot data alignability to Single KDMA ADM
+* Added compatability for Single KDMA ADM to work with other language models
+
+### Changed
+
+* Moved all system messages into the same directory
+* Made number of positive and negative self-consistency votes configurable
+ 
+
 ## Version 0.2.5
 
 ### Added
