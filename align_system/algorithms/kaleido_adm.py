@@ -1,4 +1,6 @@
 from abc import ABC, abstractmethod
+from functools import reduce
+import inspect
 
 import pandas as pd
 
@@ -58,7 +60,12 @@ class MeanDistance2(ChoiceDistanceFunction):
 
 
 DefaultKDMAEstimatorFunction = SimpleKDMAEstimator
+KnownKDMAEstimatorFunctions = [SimpleKDMAEstimator]
+
 DefaultDistanceFunction = RelevanceWeightedDistance
+KnownDistanceFunctions = [RelevanceWeightedDistance,
+                          MeanDistance,
+                          MeanDistance2]
 
 
 class KaleidoADM(AlignedDecisionMaker):
@@ -74,7 +81,9 @@ class KaleidoADM(AlignedDecisionMaker):
                              estimator_fn=DefaultKDMAEstimatorFunction,
                              kdma_descriptions_map=None):
         if isinstance(estimator_fn, str):
-            estimator_fn = vars().get(estimator_fn, estimator_fn)
+            estimator_fn = {fn.__name__: fn for fn
+                            in KnownKDMAEstimatorFunctions}.get(
+                                estimator_fn, estimator_fn)
 
         if issubclass(estimator_fn, EstimateKDMAFunction):
             estimator_fn = estimator_fn()
@@ -87,7 +96,7 @@ class KaleidoADM(AlignedDecisionMaker):
                 "found, or does not implement EstimateKDMAFunction")
 
         if kdma_descriptions_map is None:
-            kdma_descriptions_map = {k: {'description': k} for k in target_kdmas.keys()}
+            kdma_descriptions_map = {k: {'description': k.replace('_', ' ')} for k in target_kdmas.keys()}
 
         rows = []
         for choice in choices:
@@ -136,9 +145,11 @@ class KaleidoADM(AlignedDecisionMaker):
 
     def force_choice(self, kaleido_results, choices, distance_fn=DefaultDistanceFunction):
         if isinstance(distance_fn, str):
-            distance_fn = vars().get(distance_fn, distance_fn)
+            distance_fn = {fn.__name__: fn for fn
+                           in KnownDistanceFunctions}.get(
+                               distance_fn, distance_fn)
 
-        if issubclass(distance_fn, ChoiceDistanceFunction):
+        if inspect.isclass(distance_fn) and issubclass(distance_fn, ChoiceDistanceFunction):
             distance_fn = distance_fn()
         elif isinstance(distance_fn, ChoiceDistanceFunction):
             # Already initialized
@@ -214,10 +225,13 @@ class KaleidoADM(AlignedDecisionMaker):
         else:
             raise RuntimeError('Unexpected scenario_data type: {}'.format(type(scenario_data)))
 
+        label_kdmas = reduce(set.union, (choice_kdmas.keys() for choice_kdmas in labels), set())
+        target_kdma_values_in_labels = {k: target_kdma_values[k] for k in label_kdmas}
+
         kaleido_results = self.estimate_kdma_values(
             partial_template,
             sample['choices'],
-            target_kdma_values,
+            target_kdma_values_in_labels,
             kdma_descriptions_map=kdma_descriptions_map)
 
         selected_choice_idx = self.force_choice(

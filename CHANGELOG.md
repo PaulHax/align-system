@@ -3,7 +3,7 @@
 This changelog follows the specifications detailed in: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html), although we have not yet reached a `1.0.0` release.
 
-## UPDATED
+## Unreleased
 
 ### Added
 
@@ -14,14 +14,23 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 * Moved all system messages into the same directory
 * Made number of positive and negative self-consistency votes configurable
- 
+
+### Fixed
+
+* Fixed issue with configurable KDMA Estimator and Distance functions for Kaleido ADM
+
 
 ## Version 0.2.5
 
 ### Added
 
 * Created a multi-comparison-adm
+
 * Created the pulse-tagging-adm
+
+* Added stand-alone llama_index retriever component
+
+* Added retrieval to the llama_2_single_kdma_adm algorithm
 
 ### Changed
 
