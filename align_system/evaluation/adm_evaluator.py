@@ -36,6 +36,40 @@ def get_avg_system_kdmas(dataset, outputs):
     
     return avg_kdmas
 
+def alignment_accuracy_by_kdma(dataset, outputs, target_kdmas):
+    n_correct = {}
+    n_total = {}
+    for output, (input_, label) in zip(outputs, dataset):
+        if len(label) == 0 or max(map(len, label)) == 0:
+            continue
+        
+        choice_idx = output['choice']
+        label_kdmas = label[choice_idx]
+        max_kdmas = {}
+        for kdma in label_kdmas:
+            for lab in label:
+                if kdma in lab:
+                    # max_kdmas[kdma] = max(max_kdmas.get(kdma, 0), lab[kdma])
+                    # don't use max, we care about the closest to the target
+                    print(target_kdmas[kdma])
+                    max_kdmas[kdma] = min(max_kdmas.get(kdma, 0), lab[kdma], key=lambda x: abs(x - target_kdmas[kdma]))
+                    # max_kdmas[kdma] = 2
+                    
+        for kdma_name, kdma_value in label_kdmas.items():
+            if kdma_name not in n_correct:
+                n_correct[kdma_name] = 0
+                n_total[kdma_name] = 0
+            n_total[kdma_name] += 1
+            if kdma_value == max_kdmas[kdma_name]:
+                n_correct[kdma_name] += 1
+    
+    return {
+        kdma_name: n_correct[kdma_name] / (n_total[kdma_name] + 1e-9)
+        for kdma_name in n_correct
+    }
+        
+        
+        
 
 def adept_similarity_score(target_kdma_values, system_kdmas):
     if len(target_kdma_values) == 0:
@@ -220,6 +254,9 @@ def evaluate(dataset, generated_outputs, target_kdma_values):
                 for choice_metrics in per_choice_metrics
             ]) / len(per_choice_metrics)
             results['predicted_kdmas_metrics'][metric_name] = avg_metric_value
+        
+    # alignment accuracy by kdma
+    results['alignment_accuracy_by_kdma'] = alignment_accuracy_by_kdma(dataset, generated_outputs, target_kdma_values)
     
     return results
     
