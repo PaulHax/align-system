@@ -4,6 +4,13 @@ def generate_outputs(dataset, adm, target_kdma_values, **kwargs):
     outputs = []
     for input_, label in dataset:
         # add target kdmas to input without changing the dataset
+        if len(label) == 0 or max(map(len, label)) == 0:
+            outputs.append({
+                'choice': None,
+                'info': 'no_label'
+            })
+            continue
+        
         outputs.append(adm(input_, target_kdma_values, labels=label, **kwargs))
     
     return outputs
@@ -12,6 +19,9 @@ def generate_outputs(dataset, adm, target_kdma_values, **kwargs):
 def get_avg_system_kdmas(dataset, outputs):
     chosen_kdmas = {}
     for output, (input_, label) in zip(outputs, dataset):
+        if len(label) == 0 or max(map(len, label)) == 0:
+            continue
+        
         choice_idx = output['choice']
         label_kdmas = label[choice_idx]
         for kdma_name, kdma_value in label_kdmas.items():
@@ -169,7 +179,11 @@ def evaluate(dataset, generated_outputs, target_kdma_values):
     
     for metric in metrics:
         metric_name = metric.__name__
-        results['choice_metrics'][metric_name] = metric(target_kdma_values, system_kdmas)
+        try:
+            results['choice_metrics'][metric_name] = metric(target_kdma_values, system_kdmas)
+        except Exception as e:
+            print(f'Error evaluating metric {metric_name}: {e}')
+            results['choice_metrics'][metric_name] = None
         
     metrics = [
         mean_absolute_error,
@@ -189,7 +203,11 @@ def evaluate(dataset, generated_outputs, target_kdma_values):
             choice_metrics = {}
             for metric in metrics:
                 metric_name = metric.__name__
-                choice_metrics[metric_name] = metric(label_kdmas, predicted_kdma_values)
+                try:
+                    choice_metrics[metric_name] = metric(label_kdmas, predicted_kdma_values)
+                except Exception as e:
+                    print(f'Error evaluating metric {metric_name}: {e}')
+                    choice_metrics[metric_name] = None
         
             per_choice_metrics.append(choice_metrics)
     
