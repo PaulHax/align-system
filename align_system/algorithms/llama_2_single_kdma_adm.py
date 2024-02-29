@@ -876,7 +876,8 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
     def populate_treatment_parameters(self, scenario_state, treatment_action, alignment_target, **kwargs):
         from align_system.prompt_engineering.common import (
             prepare_treatment_selection_prompt)
-        from swagger_client.models import ActionTypeEnum
+        from swagger_client.models import ActionTypeEnum, InjuryLocationEnum
+        from align_system.utils import get_swagger_class_enum_values
 
         assert treatment_action.action_type == ActionTypeEnum.APPLY_TREATMENT
 
@@ -928,7 +929,19 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
                     treatment_action.parameters = {}
 
                 treatment_action.parameters['treatment'] = treatment
-                treatment_action.parameters['location'] = treatment_location
+
+                valid_treatment_locations = get_swagger_class_enum_values(
+                    InjuryLocationEnum)
+
+                if treatment_location in valid_treatment_locations:
+                    treatment_action.parameters['location'] = treatment_location
+                else:
+                    # Ensure that the treatment location is valid
+                    _, treatment_loc_idx, _ = self.bert_similarity_parse(
+                        treatment_location, valid_treatment_locations)
+
+                    treatment_action.parameters['location'] =\
+                        valid_treatment_locations[treatment_loc_idx]
 
                 break
             else:
