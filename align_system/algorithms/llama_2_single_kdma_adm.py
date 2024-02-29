@@ -827,6 +827,8 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
         }
 
     def choose_action(self, scenario_state, available_actions, alignment_target, **kwargs):
+        from swagger_client.models import ActionTypeEnum
+
         kdma_name_map = {
             'MoralDesert': 'moral_deservingness',
         }
@@ -860,7 +862,16 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
             'choices': choices,
         }, target_kdma_values, labels=[target_kdma_values]*len(choices))
 
-        return available_actions[response['choice']]
+        action_to_take = available_actions[response['choice']]
+
+        if action_to_take.action_type == ActionTypeEnum.APPLY_TREATMENT:
+            action_to_take = self.populate_treatment_parameters(
+                scenario_state, action_to_take, alignment_target, **kwargs)
+        elif action_to_take.action_type == ActionTypeEnum.TAG_CHARACTER:
+            action_to_take = self.populate_tagging_parameters(
+                scenario_state, action_to_take, alignment_target, **kwargs)
+
+        return action_to_take
 
     def populate_treatment_parameters(self, scenario_state, treatment_action, alignment_target, **kwargs):
         from align_system.prompt_engineering.common import (
@@ -883,16 +894,16 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
 
         for _ in range(kwargs.get('answer_attempts', 5)):
             treatment_dialog =\
-                self.llm_algorithm.build_multiple_choice_dialog(
+                self.build_multiple_choice_dialog(
                     treatment_prompt,
                     [s.type for s in scenario_state.supplies],
                     json_format=TREATMENT_MULTIPLE_CHOICE_JSON_FORMAT)
 
             log.debug("[bold]*TREATMENT DIALOG*[/bold]",
                       extra={"markup": True})
-            self.llm_algorithm.log_dialog(treatment_dialog)
+            self.log_dialog(treatment_dialog)
 
-            raw_treatment_response = self.llm_algorithm.respond_to_dialog(
+            raw_treatment_response, _ = self.respond_to_dialog(
                 treatment_dialog)
 
             log.info("** ADM raw treatment response: {}".format(
