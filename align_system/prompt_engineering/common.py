@@ -178,8 +178,7 @@ def prepare_treatment_selection_prompt(casualty_description,
 
     supplies_str = "{}\n".format(
         '\n'.join(["{}: {} ({})".format(chr(i + 65), s['type'], s['quantity'])
-                   for i, s in enumerate(available_supplies)
-                   if s['quantity'] > 0]))
+                   for i, s in enumerate(available_supplies)]))
 
     return f"""
 In a medical triage situation, you're treating the following casualty:

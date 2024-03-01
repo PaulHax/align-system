@@ -785,7 +785,7 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
         labels = kwargs.get('labels', {})
 
         alignment_target = None
-        if target_kdma_values is not None:
+        if target_kdma_values is not None and len(target_kdma_values) > 0:
             target_kdma = next(iter(next(iter(filter(lambda x: len(x) > 0, labels))))) # get the frist key of the first label that is not empty
 
             for label in labels:
@@ -833,10 +833,13 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
             'MoralDesert': 'moral_deservingness',
         }
 
-        target_kdma_values = {
-            kdma_name_map[k.kdma]: k.value * 10
-            for k in alignment_target.kdma_values
-        }
+        if alignment_target is None or len(alignment_target.kdma_values) == 0:
+            target_kdma_values = {}
+        else:
+            target_kdma_values = {
+                kdma_name_map[k.kdma]: k.value * 10
+                for k in alignment_target.kdma_values
+            }
 
         scenario = '\nCHARACTERS:\n'
 
@@ -859,17 +862,30 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
             'scenario': scenario,
             'state': state,
             'probe': probe,
-            'choices': choices,
-        }, target_kdma_values, labels=[target_kdma_values]*len(choices))
+            'choices': choices},
+            target_kdma_values,
+            labels=[target_kdma_values]*len(choices),
+            **kwargs)
 
         action_to_take = available_actions[response['choice']]
 
         if action_to_take.action_type == ActionTypeEnum.APPLY_TREATMENT:
-            action_to_take = self.populate_treatment_parameters(
-                scenario_state, action_to_take, alignment_target, **kwargs)
+            # If the additional required fields are already populated
+            # for the action, don't need ask the LLM again
+            if (action_to_take.parameters is None
+                or not {'treatment', 'location'}.issubset(
+                    action_to_take.parameters.keys())):
+                action_to_take = self.populate_treatment_parameters(
+                        scenario_state, action_to_take, alignment_target, **kwargs)
         elif action_to_take.action_type == ActionTypeEnum.TAG_CHARACTER:
-            action_to_take = self.populate_tagging_parameters(
-                scenario_state, action_to_take, alignment_target, **kwargs)
+            # If the additional required fields are already populated
+            # for the action, don't need ask the LLM again
+            if (action_to_take.character_id is None
+                or action_to_take.parameters is None
+                or not {'category'}.issubset(
+                    action_to_take.parameters.keys())):
+                action_to_take = self.populate_tagging_parameters(
+                    scenario_state, action_to_take, alignment_target, **kwargs)
 
         return action_to_take
 
@@ -888,16 +904,18 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
         assert len(matching_characters) == 1
         character_to_treat = matching_characters[0]
 
+        available_supplies = [s for s in scenario_state.supplies if s.quantity > 0]
+
         treatment_prompt = prepare_treatment_selection_prompt(
             character_to_treat.unstructured,
             character_to_treat.vitals.to_dict(),
-            [s.to_dict() for s in scenario_state.supplies])
+            [s.to_dict() for s in available_supplies])
 
         for _ in range(kwargs.get('answer_attempts', 5)):
             treatment_dialog =\
                 self.build_multiple_choice_dialog(
                     treatment_prompt,
-                    [s.type for s in scenario_state.supplies],
+                    [s.to_dict() for s in available_supplies],
                     json_format=TREATMENT_MULTIPLE_CHOICE_JSON_FORMAT)
 
             log.debug("[bold]*TREATMENT DIALOG*[/bold]",
@@ -916,12 +934,12 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
             if parsed_treatment_output is not None:
                 treatment_idx = parsed_treatment_output['Answer']
 
-                if len(scenario_state.supplies) <= treatment_idx:
+                if len(available_supplies) <= treatment_idx:
                     log.info('** Selected treatment_idx out of range of '
                              'available treatment options, retrying!')
                     continue
 
-                treatment = scenario_state.supplies[treatment_idx].type  # noqa
+                treatment = available_supplies[treatment_idx].type  # noqa
 
                 treatment_location = parsed_treatment_output['Location']
 
@@ -961,13 +979,13 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
         untagged_characters = [c for c in scenario_state.characters if c.tag is None]
 
         tagging_prompt = prepare_tagging_selection_prompt(
-            untagged_characters,
+            [c.to_dict() for c in untagged_characters],
             get_swagger_class_enum_values(CharacterTagEnum))
 
         for _ in range(kwargs.get('answer_attempts', 5)):
             tagging_dialog = self.build_multiple_choice_dialog(
                 tagging_prompt,
-                [c['unstructured'].strip()
+                [c.unstructured.strip()
                  for c in untagged_characters],
                 json_format=TAGGING_MULTIPLE_CHOICE_JSON_FORMAT)
 
@@ -992,7 +1010,7 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
                              'available treatment options, retrying!')
                     continue
 
-                character_to_tag_id = untagged_characters[character_idx]['id']  # noqa
+                character_to_tag_id = untagged_characters[character_idx].id  # noqa
 
                 tag = parsed_tagging_output['Tag']
 
