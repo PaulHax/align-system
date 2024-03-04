@@ -40,7 +40,8 @@ def build_casualties_string_with_vitals(casualties):
         if len(casualty_vitals) > 0:
             casualty_vitals_str =\
                 "\n".join(["{}: {}".format(k, v)
-                           for k, v in casualty_vitals.items()])
+                           for k, v in casualty_vitals.items()
+                           if v is not None])
         else:
             casualty_vitals_str = ""
 
@@ -172,7 +173,8 @@ def prepare_treatment_selection_prompt(casualty_description,
     if len(casualty_vitals) > 0:
         casualty_vitals_str = "{}\n".format(
             "\n".join(["{}: {}".format(k, v)
-                       for k, v in casualty_vitals.items()]))
+                       for k, v in casualty_vitals.items()
+                       if v is not None]))
     else:
         casualty_vitals_str = ""
 
@@ -206,5 +208,16 @@ The possible medical triage tags you can apply are:
 {tags_str}
 
 Which specific casualty should you tag, and what triage tag should be applied to the casualty?
+
+Response: """  # noqa
+
+
+def prepare_character_selection_prompt(action):
+    action_str = action.unstructured.lower().replace('_', ' ')
+
+    return f"""
+In a medical triage situation, you're performing the following action: {action_str}.
+
+Which casualty should the action apply to?
 
 Response: """  # noqa
