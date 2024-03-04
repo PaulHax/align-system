@@ -1072,9 +1072,14 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
             if parsed_character_selection_output is not None:
                 character_idx = parsed_character_selection_output['Answer']
 
+                if not isinstance(character_idx, int):
+                    log.warning('** character_idx ({}) not an integer'
+                                ', retrying!'.format(character_idx))
+                    continue
+
                 if len(scenario_state.characters) <= character_idx:
-                    log.info('** Selected character_idx out of range of '
-                             'available treatment options, retrying!')
+                    log.warning('** Selected character_idx out of range of '
+                                'available treatment options, retrying!')
                     continue
 
                 character_id = scenario_state.characters[character_idx].id  # noqa
