@@ -81,12 +81,11 @@ def run_action_based_chat_system(interface,
 
     scenario = interface.start_scenario()
 
-    if align_to_target:
-        if 'alignment_target_override' in config:
-            alignment_target = AlignmentTarget(
-                **config['alignment_target_override'])
-        else:
-            alignment_target = scenario.get_alignment_target()
+    if 'alignment_target_override' in config:
+        alignment_target = AlignmentTarget(
+            **config['alignment_target_override'])
+    elif align_to_target:
+        alignment_target = scenario.get_alignment_target()
     else:
         alignment_target = None
 
@@ -120,7 +119,7 @@ def run_action_based_chat_system(interface,
             action_to_take = adm.choose_action(
                 current_state,
                 available_actions_filtered,
-                alignment_target,
+                alignment_target if align_to_target else None,
                 **adm_inference_kwargs)
 
         log.debug("[bold]*ACTION BEING TAKEN*[/bold]",
@@ -136,7 +135,7 @@ def run_action_based_chat_system(interface,
 
         scenario_complete = current_state.scenario_complete
 
-    if align_to_target:
+    if alignment_target is not None:
         session_alignment = interface.get_session_alignment(
             alignment_target.id)
 
