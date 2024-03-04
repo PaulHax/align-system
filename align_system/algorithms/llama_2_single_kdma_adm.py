@@ -886,6 +886,14 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
                     action_to_take.parameters.keys())):
                 action_to_take = self.populate_tagging_parameters(
                     scenario_state, action_to_take, alignment_target, **kwargs)
+        elif action_to_take.action_type in {ActionTypeEnum.CHECK_ALL_VITALS,
+                                            ActionTypeEnum.CHECK_PULSE,
+                                            ActionTypeEnum.CHECK_RESPIRATION,
+                                            ActionTypeEnum.MOVE_TO_EVAC}:
+            # These actions require a `character_id`
+            if action_to_take.character_id is None:
+                action_to_take = self.generic_populate_character_id(
+                    scenario_state, action_to_take, alignment_target, **kwargs)
 
         return action_to_take
 
@@ -951,6 +959,14 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
                 valid_treatment_locations = get_swagger_class_enum_values(
                     InjuryLocationEnum)
 
+                if not isinstance(treatment_location, str):
+                    # If type is int, could be an index into the
+                    # action_to_take)locations provided in the system
+                    # action_to_take)prompt, consider handling in the
+                    # action_to_take)future
+                    log.warning("*** Treatment location value is not a string"
+                                ", retrying!")
+                    continue
                 if treatment_location in valid_treatment_locations:
                     treatment_action.parameters['location'] = treatment_location
                 else:
@@ -1027,3 +1043,47 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
                 log.info('** Failed to parse tagging')
 
         return tagging_action
+
+    def generic_populate_character_id(self, scenario_state, initial_action, alignment_target, **kwargs):
+        from align_system.prompt_engineering.common import (
+            prepare_character_selection_prompt)
+        character_selection_prompt = prepare_character_selection_prompt(
+            initial_action)
+
+        for _ in range(kwargs.get('answer_attempts', 5)):
+            character_selection_dialog = self.build_multiple_choice_dialog(
+                character_selection_prompt,
+                [c.unstructured.strip()
+                 for c in scenario_state.characters])
+
+            log.debug("[bold]*CHARACTER SELECTION DIALOG*[/bold]",
+                      extra={"markup": True})
+            self.log_dialog(character_selection_dialog)
+
+            raw_character_selection_response, _ = self.respond_to_dialog(
+                character_selection_dialog)
+
+            log.info("** ADM raw character_selection response: {}".format(
+                raw_character_selection_response))
+
+            parsed_character_selection_output = self.attempt_generic_parse(  # noqa
+                raw_character_selection_response, ['Reasoning', 'Answer'])  # noqa
+
+            if parsed_character_selection_output is not None:
+                character_idx = parsed_character_selection_output['Answer']
+
+                if len(scenario_state.characters) <= character_idx:
+                    log.info('** Selected character_idx out of range of '
+                             'available treatment options, retrying!')
+                    continue
+
+                character_id = scenario_state.characters[character_idx].id  # noqa
+
+                # Populate required parameters for character_selection action
+                initial_action.character_id = character_id
+
+                break
+            else:
+                log.info('** Failed to parse character selection')
+
+        return initial_action
