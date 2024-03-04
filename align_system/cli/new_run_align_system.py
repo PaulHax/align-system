@@ -3,6 +3,7 @@ import json
 import yaml
 
 from rich.highlighter import JSONHighlighter
+from swagger_client.models import AlignmentTarget
 
 from align_system.utils import logging
 from align_system.interfaces.cli_builder import build_interfaces
@@ -65,17 +66,27 @@ def run_action_based_chat_system(interface,
 
     if adm_class is None:
         raise RuntimeError("'adm' not found in REGISTERED_ADMS: {}".format(
-            REGISTERED_ADMS.key()))
+            list(REGISTERED_ADMS.keys())))
 
     # TODO: Check that the selected ADM implements the expected
     # abstract with respect to the selected "interface"
     # (i.e. TA3ActionBased, vs. TA1)
     adm = adm_class(**adm_init_kwargs)
 
+    # HACK: need to invoke 'load_model' for ADMs that require it,
+    # maybe it makes more sense to load_model in the init method for
+    # those ADMs
+    if hasattr(adm, 'load_model'):
+        adm.load_model()
+
     scenario = interface.start_scenario()
 
     if align_to_target:
-        alignment_target = scenario.get_alignment_target()
+        if 'alignment_target_override' in config:
+            alignment_target = AlignmentTarget(
+                **config['alignment_target_override'])
+        else:
+            alignment_target = scenario.get_alignment_target()
     else:
         alignment_target = None
 
@@ -124,6 +135,15 @@ def run_action_based_chat_system(interface,
         current_state = scenario.take_action(action_to_take)
 
         scenario_complete = current_state.scenario_complete
+
+    if align_to_target:
+        session_alignment = interface.get_session_alignment(
+            alignment_target.id)
+
+        log.info("[bold]*TA1 Alignment Score*[/bold]",
+                 extra={"markup": True})
+        log.info(json.dumps(session_alignment.to_dict(), indent=4),
+                 extra={"highlighter": JSON_HIGHLIGHTER})
 
 
 if __name__ == "__main__":

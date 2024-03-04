@@ -837,7 +837,7 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
             target_kdma_values = {}
         else:
             target_kdma_values = {
-                kdma_name_map[k.kdma]: k.value * 10
+                kdma_name_map[k['kdma']]: k['value'] * 10
                 for k in alignment_target.kdma_values
             }
 

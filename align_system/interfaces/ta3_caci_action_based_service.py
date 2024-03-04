@@ -47,6 +47,10 @@ class TA3CACIActionBasedServiceInterface(Interface):
         return TA3CACIActionBasedScenario(
             self.connection, self.session_id, scenario)
 
+    def get_session_alignment(self, alignment_target_id):
+        return self.connection.get_session_alignment(
+            self.session_id, alignment_target_id)
+
     @classmethod
     def cli_parser(cls, parser=None):
         if parser is None:
