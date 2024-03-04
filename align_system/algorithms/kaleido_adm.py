@@ -257,16 +257,21 @@ class KaleidoADM(AlignedDecisionMaker, ActionBasedADM):
 
         template = 'What action do you take? "{{choice}}" instead of {{other_choices}}.  In the context of the following scenario: {{scene_state}} {{mission}} {{decision_environment}} With the following casualties:\n{{characters_str}}'
         characters_str = '\n'.join(['{} ({}): {}'.format(c.name, c.id, c.unstructured) for c in scenario_state.characters])
+        if scenario_state.mission is None:
+            mission_str = ''
+        else:
+            mission_str = scenario_state.mission.unstructured
+
         partial_template = format_template(
             template,
             partial=True,
             scene_state=scenario_state.unstructured,
-            mission=scenario_state.mission.unstructured,
+            mission=mission_str,
             decision_environment=scenario_state.environment.decision_environment.unstructured.strip(),
             characters_str=characters_str)
 
         # Scaling KDMA values by 10 (range should be 0-10)
-        target_kdma_values = {t.kdma: t.value * 10 for t in alignment_target.kdma_values}
+        target_kdma_values = {t['kdma']: t['value'] * 10 for t in alignment_target.kdma_values}
 
         choices_unstructured = [a.unstructured for a in available_actions]
 
