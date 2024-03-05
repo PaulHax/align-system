@@ -1,6 +1,7 @@
 import sys
 import json
 import yaml
+from copy import deepcopy
 
 from rich.highlighter import JSONHighlighter
 from swagger_client.models import AlignmentTarget, ActionTypeEnum
@@ -92,6 +93,10 @@ def run_action_based_chat_system(interface,
     current_state = scenario.get_state()
     scenario_complete = current_state.scenario_complete
 
+    # Tracking these to prevent getting stuck in a loop
+    last_state = None
+    last_action = None
+
     while not scenario_complete:
         available_actions = scenario.get_available_actions()
 
@@ -112,14 +117,34 @@ def run_action_based_chat_system(interface,
                               "allowing {} action".format(ActionTypeEnum.TAG_CHARACTER))
                     continue
 
+            unvisited_characters = [c for c in current_state.characters
+                                    if c.visited is None or not c.visited]
             if a.action_type in {ActionTypeEnum.CHECK_ALL_VITALS,
                                  ActionTypeEnum.CHECK_PULSE,
                                  ActionTypeEnum.CHECK_RESPIRATION}:
-                unvisited_characters = [c for c in current_state.characters
-                                        if c.visited is None or not c.visited]
                 if len(unvisited_characters) == 0:
                     log.debug("No unvisited characters remaining, not "
                               "allowing {} action".format(a.action_type))
+                    continue
+
+            if a.action_type == ActionTypeEnum.SITREP:
+                conscious_characters = [c for c in current_state.characters
+                                        if c.vitals is None or (c.vitals is not None and c.vitals.conscious)]
+                if len(unvisited_characters) == 0 or len(conscious_characters) == 0:
+                    log.debug("No unvisited or conscious characters remaining, not "
+                              "allowing {} action".format(a.action_type))
+                    continue
+
+            if last_action is not None and last_state is not None and a == last_action:
+                # Check that the scenario state has really changed; if
+                # it hasn't don't allow this action again
+                _tmp_current_state = deepcopy(current_state)
+                _tmp_current_state.elapsed_time = last_state.elapsed_time
+
+                if last_state == _tmp_current_state:
+                    log.debug("Already took this action and there was no "
+                              "change in the scenario state, not allowing "
+                              "{} action".format(a.action_type))
                     continue
 
             available_actions_filtered.append(a)
@@ -145,6 +170,8 @@ def run_action_based_chat_system(interface,
             log.debug(json.dumps(action_to_take.to_dict(), indent=4),
                       extra={"highlighter": JSON_HIGHLIGHTER})
 
+        last_state = current_state
+        last_action = action_to_take
         current_state = scenario.take_action(action_to_take)
 
         scenario_complete = current_state.scenario_complete
