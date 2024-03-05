@@ -94,8 +94,7 @@ def run_action_based_chat_system(interface,
     scenario_complete = current_state.scenario_complete
 
     # Tracking these to prevent getting stuck in a loop
-    last_state = None
-    last_action = None
+    noop_actions = []
 
     while not scenario_complete:
         available_actions = scenario.get_available_actions()
@@ -135,17 +134,11 @@ def run_action_based_chat_system(interface,
                               "allowing {} action".format(a.action_type))
                     continue
 
-            if last_action is not None and last_state is not None and a == last_action:
-                # Check that the scenario state has really changed; if
-                # it hasn't don't allow this action again
-                _tmp_current_state = deepcopy(current_state)
-                _tmp_current_state.elapsed_time = last_state.elapsed_time
-
-                if last_state == _tmp_current_state:
-                    log.debug("Already took this action and there was no "
-                              "change in the scenario state, not allowing "
-                              "{} action".format(a.action_type))
-                    continue
+            if a in noop_actions:
+                log.debug("Already took this action and there was no "
+                          "change in the scenario state, not allowing "
+                          "{} action".format(a.action_type))
+                continue
 
             available_actions_filtered.append(a)
 
@@ -171,8 +164,18 @@ def run_action_based_chat_system(interface,
                       extra={"highlighter": JSON_HIGHLIGHTER})
 
         last_state = current_state
-        last_action = action_to_take
         current_state = scenario.take_action(action_to_take)
+
+        # Check that the scenario state has really changed
+        # Want to restrict actions that have already been taken that
+        # didn't change the state
+        _tmp_current_state = deepcopy(current_state)
+        _tmp_current_state.elapsed_time = last_state.elapsed_time
+        state_has_changed = (_tmp_current_state != last_state)
+        if state_has_changed:
+            noop_actions = []
+        else:
+            noop_actions.append(action_to_take)
 
         scenario_complete = current_state.scenario_complete
 
