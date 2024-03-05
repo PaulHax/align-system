@@ -3,7 +3,7 @@ import json
 import yaml
 
 from rich.highlighter import JSONHighlighter
-from swagger_client.models import AlignmentTarget
+from swagger_client.models import AlignmentTarget, ActionTypeEnum
 
 from align_system.utils import logging
 from align_system.interfaces.cli_builder import build_interfaces
@@ -100,15 +100,29 @@ def run_action_based_chat_system(interface,
         log.debug(json.dumps([a.to_dict() for a in available_actions], indent=4),
                   extra={"highlighter": JSON_HIGHLIGHTER})
 
-        untagged_characters = [c for c in current_state.characters if c.tag is None]
+        available_actions_filtered = []
+        for a in available_actions:
+            if a.action_type == ActionTypeEnum.TAG_CHARACTER:
+                # Don't let ADM choose to tag a character unless there are
+                # still untagged characters
+                untagged_characters = [c for c in current_state.characters
+                                       if c.tag is None]
+                if len(untagged_characters) == 0:
+                    log.debug("No untagged characters remaining, not "
+                              "allowing {} action".format(ActionTypeEnum.TAG_CHARACTER))
+                    continue
 
-        # Don't let ADM choose to tag a character unless there are
-        # still untagged characters
-        available_actions_filtered =\
-            [a for a in available_actions
-             if a.action_type != 'TAG_CHARACTER'
-             or (a.action_type == 'TAG_CHARACTER'
-                 and len(untagged_characters) > 0)]
+            if a.action_type in {ActionTypeEnum.CHECK_ALL_VITALS,
+                                 ActionTypeEnum.CHECK_PULSE,
+                                 ActionTypeEnum.CHECK_RESPIRATION}:
+                unvisited_characters = [c for c in current_state.characters
+                                        if c.visited is None or not c.visited]
+                if len(unvisited_characters) == 0:
+                    log.debug("No unvisited characters remaining, not "
+                              "allowing {} action".format(a.action_type))
+                    continue
+
+            available_actions_filtered.append(a)
 
         if len(available_actions_filtered) == 0:
             raise RuntimeError("No available actions from filtered list!")

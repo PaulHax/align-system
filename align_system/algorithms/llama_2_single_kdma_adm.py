@@ -1045,16 +1045,29 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
         return tagging_action
 
     def generic_populate_character_id(self, scenario_state, initial_action, alignment_target, **kwargs):
+        from swagger_client.models import ActionTypeEnum
         from align_system.prompt_engineering.common import (
             prepare_character_selection_prompt)
         character_selection_prompt = prepare_character_selection_prompt(
             initial_action)
 
+        filtered_characters = []
+        for c in scenario_state.characters:
+            if initial_action.action_type in {ActionTypeEnum.CHECK_ALL_VITALS,
+                                              ActionTypeEnum.CHECK_PULSE,
+                                              ActionTypeEnum.CHECK_RESPIRATION}:
+                # Don't allow the ADM to check vitals on
+                # a character that's already been "visited"
+                if c.visited:
+                    continue
+
+            filtered_characters.append(c)
+
         for _ in range(kwargs.get('answer_attempts', 5)):
             character_selection_dialog = self.build_multiple_choice_dialog(
                 character_selection_prompt,
                 [c.unstructured.strip()
-                 for c in scenario_state.characters])
+                 for c in filtered_characters])
 
             log.debug("[bold]*CHARACTER SELECTION DIALOG*[/bold]",
                       extra={"markup": True})
@@ -1077,12 +1090,12 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
                                 ', retrying!'.format(character_idx))
                     continue
 
-                if len(scenario_state.characters) <= character_idx:
+                if len(filtered_characters) <= character_idx:
                     log.warning('** Selected character_idx out of range of '
                                 'available treatment options, retrying!')
                     continue
 
-                character_id = scenario_state.characters[character_idx].id  # noqa
+                character_id = filtered_characters[character_idx].id  # noqa
 
                 # Populate required parameters for character_selection action
                 initial_action.character_id = character_id
