@@ -2,7 +2,10 @@ import sys
 import json
 import yaml
 from copy import deepcopy
+import atexit
 
+from rich.logging import RichHandler
+from rich.console import Console
 from rich.highlighter import JSONHighlighter
 from swagger_client.models import AlignmentTarget, ActionTypeEnum
 
@@ -29,6 +32,10 @@ def add_cli_args(parser):
     parser.add_argument('-l', '--loglevel',
                         type=str,
                         default='INFO')
+    parser.add_argument('--logfile-path',
+                        type=str,
+                        default=None,
+                        help="Also write log output to the specified file")
 
 
 def main():
@@ -51,10 +58,21 @@ def main():
 def run_action_based_chat_system(interface,
                                  adm_config,
                                  align_to_target,
-                                 loglevel="INFO"):
+                                 loglevel="INFO",
+                                 logfile_path=None):
     # Set log level on root logger (such that child loggers respect
     # the set log level)
-    logging.getLogger().setLevel(loglevel)
+    root_logger = logging.getLogger()
+    root_logger.setLevel(loglevel)
+
+    if logfile_path is not None:
+        logfile = open(logfile_path, 'w')
+        # Ensure the opened logfile is closed when the program exits
+        atexit.register(lambda: logfile.close())
+
+        filehandler = RichHandler(
+            console=Console(file=logfile, color_system=None))
+        root_logger.addHandler(filehandler)
 
     with open(adm_config, 'r') as f:
         config = yaml.safe_load(f)
