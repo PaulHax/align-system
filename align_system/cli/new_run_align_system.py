@@ -36,6 +36,14 @@ def add_cli_args(parser):
                         type=str,
                         default=None,
                         help="Also write log output to the specified file")
+    parser.add_argument('--save-input-output-to-path',
+                        type=str,
+                        default=None,
+                        help="Save system inputs and outputs to a file")
+    parser.add_argument('--save-alignment-score-to-path',
+                        type=str,
+                        default=None,
+                        help="Save alignment score output to a file")
 
 
 def main():
@@ -59,7 +67,9 @@ def run_action_based_chat_system(interface,
                                  adm_config,
                                  align_to_target,
                                  loglevel="INFO",
-                                 logfile_path=None):
+                                 logfile_path=None,
+                                 save_input_output_to_path=None,
+                                 save_alignment_score_to_path=None):
     # Set log level on root logger (such that child loggers respect
     # the set log level)
     root_logger = logging.getLogger()
@@ -113,6 +123,10 @@ def run_action_based_chat_system(interface,
 
     # Tracking these to prevent getting stuck in a loop
     noop_actions = []
+
+    # Capture inputs and outputs in a similar format to what's used by
+    # our internal evaluation framework code
+    inputs_outputs = []
 
     while not scenario_complete:
         available_actions = scenario.get_available_actions()
@@ -181,6 +195,19 @@ def run_action_based_chat_system(interface,
             log.debug(json.dumps(action_to_take.to_dict(), indent=4),
                       extra={"highlighter": JSON_HIGHLIGHTER})
 
+        action_choice_idx = None
+        for i, a in enumerate(available_actions):
+            if a.action_id == action_to_take.action_id:
+                action_choice_idx = i
+                break
+
+        inputs_outputs.append({'input': {'scenario_id': scenario.id(),
+                                         'state': current_state.unstructured,
+                                         'choices': [a.to_dict() for a in available_actions]},
+                               'label': [{} if a.kdma_association is None else a.kdma_association for a in available_actions],
+                               'output': {'choice': action_choice_idx,
+                                          'action': action_to_take.to_dict()}})
+
         last_state = current_state
         current_state = scenario.take_action(action_to_take)
 
@@ -197,6 +224,10 @@ def run_action_based_chat_system(interface,
 
         scenario_complete = current_state.scenario_complete
 
+    if save_input_output_to_path is not None:
+        with open(save_input_output_to_path, 'w') as f:
+            json.dump(inputs_outputs, f, indent=2)
+
     if alignment_target is not None:
         session_alignment = interface.get_session_alignment(
             alignment_target.id)
@@ -205,6 +236,10 @@ def run_action_based_chat_system(interface,
                  extra={"markup": True})
         log.info(json.dumps(session_alignment.to_dict(), indent=4),
                  extra={"highlighter": JSON_HIGHLIGHTER})
+
+        if save_alignment_score_to_path is not None:
+            with open(save_alignment_score_to_path, 'w') as f:
+                json.dump(session_alignment.to_dict(), f, indent=2)
 
 
 if __name__ == "__main__":

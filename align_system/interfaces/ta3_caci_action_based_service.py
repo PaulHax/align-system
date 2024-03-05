@@ -99,6 +99,9 @@ class TA3CACIActionBasedScenario(ActionBasedScenarioInterface):
 
         self.scenario = scenario
 
+    def id(self):
+        return self.scenario.id
+
     def get_alignment_target(self):
         return self.connection.get_alignment_target(
             self.session_id, self.scenario.id)
