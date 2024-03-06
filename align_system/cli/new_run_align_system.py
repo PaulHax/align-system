@@ -108,135 +108,151 @@ def run_action_based_chat_system(interface,
     if hasattr(adm, 'load_model'):
         adm.load_model()
 
-    scenario = interface.start_scenario()
-
-    if 'alignment_target_override' in config:
-        alignment_target = AlignmentTarget(
-            **config['alignment_target_override'])
-    elif align_to_target:
-        alignment_target = scenario.get_alignment_target()
-    else:
-        alignment_target = None
-
-    current_state = scenario.get_state()
-    scenario_complete = current_state.scenario_complete
-
-    # Tracking these to prevent getting stuck in a loop
-    noop_actions = []
-
     # Capture inputs and outputs in a similar format to what's used by
     # our internal evaluation framework code
     inputs_outputs = []
 
-    while not scenario_complete:
-        available_actions = scenario.get_available_actions()
+    session_alignment = None
 
-        log.debug("[bold]*AVAILABLE ACTIONS*[/bold]",
-                  extra={"markup": True})
-        log.debug(json.dumps([a.to_dict() for a in available_actions], indent=4),
-                  extra={"highlighter": JSON_HIGHLIGHTER})
+    completed_scenarios = set()
 
-        available_actions_filtered = []
-        for a in available_actions:
-            if a.action_type == ActionTypeEnum.TAG_CHARACTER:
-                # Don't let ADM choose to tag a character unless there are
-                # still untagged characters
-                untagged_characters = [c for c in current_state.characters
-                                       if c.tag is None]
-                if len(untagged_characters) == 0:
-                    log.debug("No untagged characters remaining, not "
-                              "allowing {} action".format(ActionTypeEnum.TAG_CHARACTER))
-                    continue
+    # Loop through available scenarios
+    while scenario := interface.start_scenario():
+        if scenario.id() == '':
+            log.info("Next scenario ID is blank, assuming we're done, exiting")
+            break
+        elif scenario.id() in completed_scenarios:
+            log.info("Already completed this scenario, assuming we're done, exiting")
+            break
 
-            unvisited_characters = [c for c in current_state.characters
-                                    if c.visited is None or not c.visited]
-            if a.action_type in {ActionTypeEnum.CHECK_ALL_VITALS,
-                                 ActionTypeEnum.CHECK_PULSE,
-                                 ActionTypeEnum.CHECK_RESPIRATION}:
-                if len(unvisited_characters) == 0:
-                    log.debug("No unvisited characters remaining, not "
-                              "allowing {} action".format(a.action_type))
-                    continue
-
-            if a.action_type == ActionTypeEnum.SITREP:
-                conscious_characters = [c for c in current_state.characters
-                                        if c.vitals is None or (c.vitals is not None and c.vitals.conscious)]
-                if len(unvisited_characters) == 0 or len(conscious_characters) == 0:
-                    log.debug("No unvisited or conscious characters remaining, not "
-                              "allowing {} action".format(a.action_type))
-                    continue
-
-            if a in noop_actions:
-                log.debug("Already took this action and there was no "
-                          "change in the scenario state, not allowing "
-                          "{} action".format(a.action_type))
-                continue
-
-            available_actions_filtered.append(a)
-
-        if len(available_actions_filtered) == 0:
-            raise RuntimeError("No available actions from filtered list!")
-        elif len(available_actions_filtered) == 1:
-            log.info("** Choosing only available (filtered) action")
-            action_to_take = available_actions_filtered[0]
+        if 'alignment_target_override' in config:
+            alignment_target = AlignmentTarget(
+                **config['alignment_target_override'])
+        elif align_to_target:
+            alignment_target = scenario.get_alignment_target()
         else:
-            action_to_take = adm.choose_action(
-                current_state,
-                available_actions_filtered,
-                alignment_target if align_to_target else None,
-                **adm_inference_kwargs)
+            alignment_target = None
 
-        log.debug("[bold]*ACTION BEING TAKEN*[/bold]",
-                  extra={"markup": True})
-        if isinstance(action_to_take, dict):
-            log.debug(json.dumps(action_to_take, indent=4),
-                      extra={"highlighter": JSON_HIGHLIGHTER})
-        else:
-            log.debug(json.dumps(action_to_take.to_dict(), indent=4),
-                      extra={"highlighter": JSON_HIGHLIGHTER})
-
-        action_choice_idx = None
-        for i, a in enumerate(available_actions):
-            if a.action_id == action_to_take.action_id:
-                action_choice_idx = i
-                break
-
-        inputs_outputs.append({'input': {'scenario_id': scenario.id(),
-                                         'state': current_state.unstructured,
-                                         'choices': [a.to_dict() for a in available_actions]},
-                               'label': [{} if a.kdma_association is None else a.kdma_association for a in available_actions],
-                               'output': {'choice': action_choice_idx,
-                                          'action': action_to_take.to_dict()}})
-
-        last_state = current_state
-        current_state = scenario.take_action(action_to_take)
-
-        # Check that the scenario state has really changed
-        # Want to restrict actions that have already been taken that
-        # didn't change the state
-        _tmp_current_state = deepcopy(current_state)
-        _tmp_current_state.elapsed_time = last_state.elapsed_time
-        state_has_changed = (_tmp_current_state != last_state)
-        if state_has_changed:
-            noop_actions = []
-        else:
-            noop_actions.append(action_to_take)
-
+        current_state = scenario.get_state()
         scenario_complete = current_state.scenario_complete
+
+        # Tracking these to prevent getting stuck in a loop
+        noop_actions = []
+
+        while not scenario_complete:
+            available_actions = scenario.get_available_actions()
+
+            log.debug("[bold]*AVAILABLE ACTIONS*[/bold]",
+                      extra={"markup": True})
+            log.debug(json.dumps([a.to_dict() for a in available_actions], indent=4),
+                      extra={"highlighter": JSON_HIGHLIGHTER})
+
+            available_actions_filtered = []
+            for a in available_actions:
+                if a.action_type == ActionTypeEnum.TAG_CHARACTER:
+                    # Don't let ADM choose to tag a character unless there are
+                    # still untagged characters
+                    untagged_characters = [c for c in current_state.characters
+                                           if c.tag is None]
+                    if len(untagged_characters) == 0:
+                        log.debug("No untagged characters remaining, not "
+                                  "allowing {} action".format(ActionTypeEnum.TAG_CHARACTER))
+                        continue
+
+                unvisited_characters = [c for c in current_state.characters
+                                        if c.visited is None or not c.visited]
+                if a.action_type in {ActionTypeEnum.CHECK_ALL_VITALS,
+                                     ActionTypeEnum.CHECK_PULSE,
+                                     ActionTypeEnum.CHECK_RESPIRATION}:
+                    if len(unvisited_characters) == 0:
+                        log.debug("No unvisited characters remaining, not "
+                                  "allowing {} action".format(a.action_type))
+                        continue
+
+                if a.action_type == ActionTypeEnum.SITREP:
+                    conscious_characters = [c for c in current_state.characters
+                                            if c.vitals is None or (c.vitals is not None and c.vitals.conscious)]
+                    if len(unvisited_characters) == 0 or len(conscious_characters) == 0:
+                        log.debug("No unvisited or conscious characters remaining, not "
+                                  "allowing {} action".format(a.action_type))
+                        continue
+
+                if a in noop_actions:
+                    log.debug("Already took this action and there was no "
+                              "change in the scenario state, not allowing "
+                              "{} action".format(a.action_type))
+                    continue
+
+                available_actions_filtered.append(a)
+
+            if len(available_actions_filtered) == 0:
+                raise RuntimeError("No available actions from filtered list!")
+            elif len(available_actions_filtered) == 1:
+                log.info("** Choosing only available (filtered) action")
+                action_to_take = available_actions_filtered[0]
+            else:
+                action_to_take = adm.choose_action(
+                    current_state,
+                    available_actions_filtered,
+                    alignment_target if align_to_target else None,
+                    **adm_inference_kwargs)
+
+            log.debug("[bold]*ACTION BEING TAKEN*[/bold]",
+                      extra={"markup": True})
+            if isinstance(action_to_take, dict):
+                log.debug(json.dumps(action_to_take, indent=4),
+                          extra={"highlighter": JSON_HIGHLIGHTER})
+            else:
+                log.debug(json.dumps(action_to_take.to_dict(), indent=4),
+                          extra={"highlighter": JSON_HIGHLIGHTER})
+
+            action_choice_idx = None
+            for i, a in enumerate(available_actions):
+                if a.action_id == action_to_take.action_id:
+                    action_choice_idx = i
+                    break
+
+            inputs_outputs.append({'input': {'scenario_id': scenario.id(),
+                                             'full_state': current_state.to_dict(),
+                                             'state': current_state.unstructured,
+                                             'choices': [a.to_dict() for a in available_actions]},
+                                   'label': [{} if a.kdma_association is None else a.kdma_association for a in available_actions],
+                                   'output': {'choice': action_choice_idx,
+                                              'action': action_to_take.to_dict()}})
+
+            last_state = current_state
+            current_state = scenario.take_action(action_to_take)
+
+            # Check that the scenario state has really changed
+            # Want to restrict actions that have already been taken that
+            # didn't change the state
+            _tmp_current_state = deepcopy(current_state)
+            _tmp_current_state.elapsed_time = last_state.elapsed_time
+            state_has_changed = (_tmp_current_state != last_state)
+            if state_has_changed:
+                noop_actions = []
+            else:
+                noop_actions.append(action_to_take)
+
+            scenario_complete = current_state.scenario_complete
+
+            if scenario_complete:
+                completed_scenarios.add(scenario.id())
+
+            if alignment_target is not None:
+                session_alignment = interface.get_session_alignment(
+                    alignment_target.id)
+
+                log.info("[bold]*TA1 Alignment Score*[/bold]",
+                         extra={"markup": True})
+                log.info(json.dumps(session_alignment.to_dict(), indent=4),
+                         extra={"highlighter": JSON_HIGHLIGHTER})
 
     if save_input_output_to_path is not None:
         with open(save_input_output_to_path, 'w') as f:
             json.dump(inputs_outputs, f, indent=2)
 
-    if alignment_target is not None:
-        session_alignment = interface.get_session_alignment(
-            alignment_target.id)
-
-        log.info("[bold]*TA1 Alignment Score*[/bold]",
-                 extra={"markup": True})
-        log.info(json.dumps(session_alignment.to_dict(), indent=4),
-                 extra={"highlighter": JSON_HIGHLIGHTER})
-
+    if session_alignment is not None:
         if save_alignment_score_to_path is not None:
             with open(save_alignment_score_to_path, 'w') as f:
                 json.dump(session_alignment.to_dict(), f, indent=2)

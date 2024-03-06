@@ -1019,12 +1019,21 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
                 raw_tagging_response, ['Reasoning', 'Answer', 'Tag'])  # noqa
 
             if parsed_tagging_output is not None:
-                character_idx = parsed_tagging_output['Answer']
+                if len(untagged_characters) == 1:
+                    log.debug("** Force selecting only available character")
+                    character_idx = 0
+                else:
+                    character_idx = parsed_tagging_output['Answer']
 
-                if len(untagged_characters) <= character_idx:
-                    log.info('** Selected character_idx out of range of '
-                             'available treatment options, retrying!')
-                    continue
+                    if not isinstance(character_idx, int):
+                        log.warning('** character_idx ({}) not an integer'
+                                    ', retrying!'.format(character_idx))
+                        continue
+
+                    if len(untagged_characters) <= character_idx:
+                        log.info('** Selected character_idx out of range of '
+                                 'available treatment options, retrying!')
+                        continue
 
                 character_to_tag_id = untagged_characters[character_idx].id  # noqa
 
@@ -1083,17 +1092,21 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
                 raw_character_selection_response, ['Reasoning', 'Answer'])  # noqa
 
             if parsed_character_selection_output is not None:
-                character_idx = parsed_character_selection_output['Answer']
+                if len(filtered_characters) == 1:
+                    log.debug("** Force selecting only available character")
+                    character_idx = 0
+                else:
+                    character_idx = parsed_character_selection_output['Answer']
 
-                if not isinstance(character_idx, int):
-                    log.warning('** character_idx ({}) not an integer'
-                                ', retrying!'.format(character_idx))
-                    continue
+                    if not isinstance(character_idx, int):
+                        log.warning('** character_idx ({}) not an integer'
+                                    ', retrying!'.format(character_idx))
+                        continue
 
-                if len(filtered_characters) <= character_idx:
-                    log.warning('** Selected character_idx out of range of '
-                                'available treatment options, retrying!')
-                    continue
+                    if len(filtered_characters) <= character_idx:
+                        log.warning('** Selected character_idx out of range of '
+                                    'available treatment options, retrying!')
+                        continue
 
                 character_id = filtered_characters[character_idx].id  # noqa
 
