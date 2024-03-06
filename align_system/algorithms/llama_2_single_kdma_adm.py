@@ -906,10 +906,18 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
         assert treatment_action.action_type == ActionTypeEnum.APPLY_TREATMENT
 
         character_id = treatment_action.character_id
+        if character_id is None:
+            # Need to populate character_id on treatment action
+            treatment_action = self.generic_populate_character_id(
+                scenario_state, treatment_action, alignment_target, **kwargs)
+
+            character_id = treatment_action.character_id
+
         matching_characters = [c for c in scenario_state.characters
                                if c.id == character_id]
 
         assert len(matching_characters) == 1
+
         character_to_treat = matching_characters[0]
 
         available_supplies = [s for s in scenario_state.supplies if s.quantity > 0]
