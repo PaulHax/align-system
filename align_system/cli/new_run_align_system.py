@@ -112,7 +112,7 @@ def run_action_based_chat_system(interface,
     # our internal evaluation framework code
     inputs_outputs = []
 
-    session_alignment = None
+    session_alignment_scores = []
 
     completed_scenarios = set()
 
@@ -239,23 +239,25 @@ def run_action_based_chat_system(interface,
             if scenario_complete:
                 completed_scenarios.add(scenario.id())
 
-            if alignment_target is not None:
-                session_alignment = interface.get_session_alignment(
-                    alignment_target.id)
+        if alignment_target is not None:
+            session_alignment = interface.get_session_alignment(
+                alignment_target.id)
 
-                log.info("[bold]*TA1 Alignment Score*[/bold]",
-                         extra={"markup": True})
-                log.info(json.dumps(session_alignment.to_dict(), indent=4),
-                         extra={"highlighter": JSON_HIGHLIGHTER})
+            session_alignment_scores.append(session_alignment)
+
+            log.info("[bold]*TA1 Alignment Score*[/bold]",
+                     extra={"markup": True})
+            log.info(json.dumps(session_alignment.to_dict(), indent=4),
+                     extra={"highlighter": JSON_HIGHLIGHTER})
 
     if save_input_output_to_path is not None:
         with open(save_input_output_to_path, 'w') as f:
             json.dump(inputs_outputs, f, indent=2)
 
-    if session_alignment is not None:
+    if len(session_alignment_scores) > 0:
         if save_alignment_score_to_path is not None:
             with open(save_alignment_score_to_path, 'w') as f:
-                json.dump(session_alignment.to_dict(), f, indent=2)
+                json.dump(session_alignment_scores.to_dict(), f, indent=2)
 
 
 if __name__ == "__main__":
