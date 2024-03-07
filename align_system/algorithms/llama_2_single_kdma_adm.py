@@ -831,6 +831,7 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
 
         kdma_name_map = {
             'MoralDesert': 'moral_deservingness',
+            'maximization': 'maximization',
         }
 
         if alignment_target is None or len(alignment_target.kdma_values) == 0:
