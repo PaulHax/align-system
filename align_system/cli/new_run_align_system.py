@@ -257,7 +257,7 @@ def run_action_based_chat_system(interface,
     if len(session_alignment_scores) > 0:
         if save_alignment_score_to_path is not None:
             with open(save_alignment_score_to_path, 'w') as f:
-                json.dump(session_alignment_scores.to_dict(), f, indent=2)
+                json.dump([s.to_dict() for s in session_alignment_scores], f, indent=2)
 
 
 if __name__ == "__main__":
