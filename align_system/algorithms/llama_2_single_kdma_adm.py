@@ -303,8 +303,6 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
         generated_output = self.tokenizer.decode(outputs.sequences[0][prompt_length:])
         inference_pair['output'] = generated_output
 
-        print('INFERENCE PAIR\n', inference_pair)
-
         return generated_output, inference_pair
 
     def respond_to_dialogs_batched(self, dialogs, prefixes=None):
@@ -725,6 +723,12 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
         except Exception as e:
             log.warning(f"Error calculating votes: {e}")
             choice_scores = [None] * len(choices)
+
+        log.debug("[bold]*RESPONSES*[bold]", extra={"markup": True})
+        for i, ip in enumerate(inference_pairs):
+            log.debug("[bold]*response {}*[bold]".format(i+1),
+                      extra={"markup": True})
+            log.debug(ip['output'])
 
         log.explain("[bold]*CHOICE SCORES*[/bold]",
                     extra={"markup": True})
