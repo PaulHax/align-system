@@ -33,7 +33,8 @@ kdmas = {
     'denial',
     'moral_deservingness',
     'lives_saved',
-    'continuation_of_care'
+    'continuation_of_care',
+    'maximization'
 }
 
 kdma_remapping = {
@@ -1047,6 +1048,10 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
                 character_to_tag_id = untagged_characters[character_idx].id  # noqa
 
                 tag = parsed_tagging_output['Tag']
+                if not isinstance(tag, str):
+                    log.warning("** Selected tag ({}) not of type string"
+                                ", retrying!".format(tag))
+                    continue
 
                 # Populate required parameters for tagging action
                 tagging_action.character_id = character_to_tag_id

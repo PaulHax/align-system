@@ -12,6 +12,7 @@ adm:
     shuffle: true
 
 alignment_target_override:
-  id: ADEPT-metrics_eval-alignment-target-train-LOW
+  id: maximization_high
   kdma_values:
-    - {kdma: MoralDesert, value: 0}
+    - kdma: maximization
+      value: 0.9

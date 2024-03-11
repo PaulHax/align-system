@@ -5,5 +5,5 @@ MoralDesert:
 
 maximization:
   name: Maximization
-  description: Always choosing the perfect or best option
+  description: Prioritize gathering the most information possible before acting on that information to maximize results
   vrd: Value
