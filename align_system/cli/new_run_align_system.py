@@ -243,12 +243,15 @@ def run_action_based_chat_system(interface,
             session_alignment = interface.get_session_alignment(
                 alignment_target.id)
 
-            session_alignment_scores.append(session_alignment)
+            if session_alignment is None:
+                log.info("Couldn't get session alignment from interface")
+            else:
+                session_alignment_scores.append(session_alignment)
 
-            log.info("[bold]*TA1 Alignment Score*[/bold]",
-                     extra={"markup": True})
-            log.info(json.dumps(session_alignment.to_dict(), indent=4),
-                     extra={"highlighter": JSON_HIGHLIGHTER})
+                log.info("[bold]*TA1 Alignment Score*[/bold]",
+                         extra={"markup": True})
+                log.info(json.dumps(session_alignment.to_dict(), indent=4),
+                         extra={"highlighter": JSON_HIGHLIGHTER})
 
     if save_input_output_to_path is not None:
         with open(save_input_output_to_path, 'w') as f:

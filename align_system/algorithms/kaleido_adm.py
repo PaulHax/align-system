@@ -256,6 +256,8 @@ class KaleidoADM(AlignedDecisionMaker, ActionBasedADM):
                 kdma_descriptions_map = kwargs['kdma_descriptions_map']
 
         template = 'What action do you take? "{{choice}}" instead of {{other_choices}}.  In the context of the following scenario: {{scene_state}} {{mission}} {{decision_environment}} With the following casualties:\n{{characters_str}}'
+        # TODO: Parameterize this
+        # template = 'Choosing to "{{choice}}".  In the context of the following scenario: {{scene_state}} {{mission}} {{decision_environment}} With the following casualties:\n{{characters_str}}'
         characters_str = '\n'.join(['{} ({}): {}'.format(c.name, c.id, c.unstructured) for c in scenario_state.characters])
         if scenario_state.mission is None:
             mission_str = ''
@@ -271,7 +273,11 @@ class KaleidoADM(AlignedDecisionMaker, ActionBasedADM):
             characters_str=characters_str)
 
         # Scaling KDMA values by 10 (range should be 0-10)
-        target_kdma_values = {t['kdma']: t['value'] * 10 for t in alignment_target.kdma_values}
+        if not isinstance(alignment_target, dict):
+            alignment_target = alignment_target.to_dict()
+
+        target_kdma_values = {t['kdma']: t['value'] * 10 for t
+                              in alignment_target.get('kdma_values', ())}
 
         choices_unstructured = [a.unstructured for a in available_actions]
 

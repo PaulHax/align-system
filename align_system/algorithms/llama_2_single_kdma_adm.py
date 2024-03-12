@@ -371,7 +371,7 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
         inference_pairs = []
         if not baseline:
             unsupported_kdmas = {kdma_remapping.get(k, k)
-                                for k in target_kdmas.keys()} - kdmas
+                                 for k in target_kdmas.keys()} - kdmas
             if len(unsupported_kdmas) > 0:
                 raise RuntimeError(f"KDMA(s) {unsupported_kdmas} not supported.")
 
@@ -840,9 +840,10 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
         if alignment_target is None or len(alignment_target.kdma_values) == 0:
             target_kdma_values = {}
         else:
+            alignment_target_dict = alignment_target.to_dict()
             target_kdma_values = {
                 kdma_name_map[k['kdma']]: k['value'] * 10
-                for k in alignment_target.kdma_values
+                for k in alignment_target_dict.get('kdma_values', ())
             }
 
         scenario = '\nCHARACTERS:\n'
