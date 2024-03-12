@@ -59,7 +59,7 @@ def main():
               extra={'markup': True, 'highlighter': None})
     run_action_based_chat_system(
         **build_interfaces(
-            add_cli_args, "ALIGN Action Based System CLI - Chat Model",
+            add_cli_args, "ALIGN System CLI",
             supported_interfaces={'TA3ActionBased'}))
 
 

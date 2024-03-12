@@ -30,6 +30,7 @@ swagger-client = {git = "https://github.com/NextCenturyCorporation/itm-evaluatio
 
 [tool.poetry.scripts]
 run_align_system = 'align_system.cli.run_align_system:main'
+run_simplified_align_system = 'align_system.cli.run_simplified_align_system:main'
 run_action_based_align_system = 'align_system.cli.run_action_based_align_system:main'
 run_chat_baseline = 'align_system.cli.run_chat_baseline:main'
 run_action_based_chat_baseline = 'align_system.cli.run_action_based_chat_baseline:main'
