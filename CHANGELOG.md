@@ -3,10 +3,33 @@
 This changelog follows the specifications detailed in: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html), although we have not yet reached a `1.0.0` release.
 
-## Unreleased
+## 0.3.0
 
 ### Added
+
+* Added new driver script for TA3 interactions that uses a new YAML config format for ADMs
+* Added several ADM config files for new driver script
+* Added a new ADM HybridKaleidoADM which defers to a Llama2SingleKDMAADM instance to fill out action parameters
+* Added new abstract class for action based ADMs (called ActionBasedADM), requires a `choose_action` method
+* Implemented ActionBasedADM `choose_action` method on the KaleidoADM, Llama2SingleKDMAADM, and a new ADM HybridKaleidoADM
 * Added alignment accuracy metric in self-evaluation framework
+* Added re-usable methods for filling out action parameters to Llama2SingleKDMAADM
+* Added short KDMA descriptions for moral deservingness and maximization for Kaleido
+* Added new prompt template for selecting the target character of an action
+* Added high and low alignment system prompts for SoarTech's maximization KDMA
+
+### Changed
+
+* Replaced instances of "casualties" with "characters" as per the new new TA3 scenario data format
+* Changed TA3 interface component over to using TA3 client module (rather than raw HTTP requests)
+* Moved the previous `run_align_system.py` script to `run_simplified_align_system.py`, replacing it with the new primary CLI script
+* Updated README with respect to new CLI script
+* Changed some prompts to not display vitals with a value of None
+
+### Fixed
+
+* Fixed issue with logging of choice scores after multiple-sampling with voting
+* Fixed issue where per-sample LLM outputs weren't being logged correctly
 
 ## 0.2.6
 
