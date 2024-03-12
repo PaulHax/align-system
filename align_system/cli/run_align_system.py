@@ -1,18 +1,17 @@
 import sys
 import json
+import yaml
+from copy import deepcopy
+import atexit
 
+from rich.logging import RichHandler
+from rich.console import Console
 from rich.highlighter import JSONHighlighter
+from swagger_client.models import AlignmentTarget, ActionTypeEnum
 
 from align_system.utils import logging
 from align_system.interfaces.cli_builder import build_interfaces
-from align_system.algorithms.llm_baseline import LLMBaseline
-from align_system.algorithms.llama_index import LlamaIndex
-from align_system.similarity_measures import build_force_choice_func
-from align_system.prompt_engineering.common import prepare_prompt
-from align_system.utils.enums import ProbeType
-from align_system.interfaces.abstracts import (
-    ScenarioInterfaceWithAlignment,
-    ProbeInterfaceWithAlignment)
+from align_system.algorithms import REGISTERED_ADMS
 
 
 log = logging.getLogger(__name__)
@@ -20,165 +19,248 @@ JSON_HIGHLIGHTER = JSONHighlighter()
 
 
 def add_cli_args(parser):
-    parser.add_argument('-m', '--model',
+    # Using argparse to add our system CLI specific arguments.  Can
+    # modify or add your own custom CLI arguments here
+    parser.add_argument('-c', '--adm-config',
                         type=str,
-                        default="falcon",
-                        help="LLM Baseline model to use")
+                        required=True,
+                        help="Path to ADM config YAML")
     parser.add_argument('-t', '--align-to-target',
                         action='store_true',
                         default=False,
                         help="Align algorithm to target KDMAs")
-    parser.add_argument('-a', '--algorithm',
-                        type=str,
-                        default="llama_index",
-                        help="Algorithm to use")
-    parser.add_argument('-A', '--algorithm-kwargs',
-                        type=str,
-                        required=False,
-                        help="JSON encoded dictionary of kwargs for algorithm "
-                             "initialization")
-    parser.add_argument('--similarity-measure',
-                        type=str,
-                        default="bert",
-                        help="Similarity measure to use (default: 'bert')")
     parser.add_argument('-l', '--loglevel',
                         type=str,
                         default='INFO')
+    parser.add_argument('--logfile-path',
+                        type=str,
+                        default=None,
+                        help="Also write log output to the specified file")
+    parser.add_argument('--save-input-output-to-path',
+                        type=str,
+                        default=None,
+                        help="Save system inputs and outputs to a file")
+    parser.add_argument('--save-alignment-score-to-path',
+                        type=str,
+                        default=None,
+                        help="Save alignment score output to a file")
 
 
 def main():
+    # The `build_interfaces` call here adds all interfaces as
+    # subparsers to your CLI.  (Can specify what interfaces you
+    # support explicitly with the optional `supported_interfaces`
+    # argument (as a set))
+    # The `build_interfaces` call also instantiates an interface
+    # object based on the selected interface and interface arguments
+    # provided at the command line and passes them to your run
+    # function (`run_custom_system` in this case)
     log.debug(f"[bright_black]CMD: {' '.join(sys.argv)}[/bright_black]",
               extra={'markup': True, 'highlighter': None})
-    run_align_system(
-        **build_interfaces(add_cli_args, "ALIGN System CLI",
-                           supported_interfaces={'LocalFiles',
-                                                 'TA1Soartech',
-                                                 'TA1Adept'}))
+    run_action_based_chat_system(
+        **build_interfaces(
+            add_cli_args, "ALIGN System CLI",
+            supported_interfaces={'TA3ActionBased'}))
 
 
-def run_align_system(interface,
-                     model,
-                     align_to_target=False,
-                     algorithm="llm_baseline",
-                     algorithm_kwargs=None,
-                     similarity_measure="bert",
-                     loglevel="INFO"):
+def run_action_based_chat_system(interface,
+                                 adm_config,
+                                 align_to_target,
+                                 loglevel="INFO",
+                                 logfile_path=None,
+                                 save_input_output_to_path=None,
+                                 save_alignment_score_to_path=None):
     # Set log level on root logger (such that child loggers respect
     # the set log level)
-    logging.getLogger().setLevel(loglevel)
+    root_logger = logging.getLogger()
+    root_logger.setLevel(loglevel)
 
-    scenario = interface.start_scenario()
-    scenario_dict = scenario.to_dict()
+    if logfile_path is not None:
+        logfile = open(logfile_path, 'w')
+        # Ensure the opened logfile is closed when the program exits
+        atexit.register(lambda: logfile.close())
 
-    if align_to_target:
-        alignment_target_dict = scenario.get_alignment_target()
+        filehandler = RichHandler(
+            console=Console(file=logfile, color_system=None))
+        root_logger.addHandler(filehandler)
 
-    force_choice_func = build_force_choice_func(similarity_measure)
+    with open(adm_config, 'r') as f:
+        config = yaml.safe_load(f)
 
-    # Load the system / model
-    algorithm_kwargs_parsed = {}
-    if algorithm_kwargs is not None:
-        algorithm_kwargs_parsed = json.loads(algorithm_kwargs)
+    adm_config = config['adm']
+    adm_name = adm_config['name']
+    adm_init_kwargs = adm_config.get('init_kwargs', {})
+    adm_inference_kwargs = adm_config.get('inference_kwargs', {})
+    adm_class = REGISTERED_ADMS.get(adm_name)
 
-    if algorithm == "llm_baseline":
-        algorithm = LLMBaseline(
-            model_use=model, distributed=False,
-            **algorithm_kwargs_parsed)
-    elif algorithm == "llama_index":
-        # TODO: This is a hacky way to have the "Knowledge" KDMA
-        # determine whether or not domain documents should be loaded.
-        # Should remove, or move to llama_index code
-        if align_to_target:
-            for kdma_dict in alignment_target_dict.get('kdma_values', ()):
-                if kdma_dict['kdma'].lower() == 'knowledge':
-                    if kdma_dict['value'] > 1:
-                        log.debug("** Setting 'retrieval_enabled' to True "
-                                  "based on 'Knowledge' KDMA value ({})".format(
-                                     kdma_dict['value']))
-                        algorithm_kwargs_parsed['retrieval_enabled'] = True
-                    else:
-                        log.debug("** Setting 'retrieval_enabled' to False "
-                                  "based on 'Knowledge' KDMA value ({})".format(
-                                  kdma_dict['value']))
-                        algorithm_kwargs_parsed['retrieval_enabled'] = False
+    if adm_class is None:
+        raise RuntimeError("'adm' not found in REGISTERED_ADMS: {}".format(
+            list(REGISTERED_ADMS.keys())))
 
+    # TODO: Check that the selected ADM implements the expected
+    # abstract with respect to the selected "interface"
+    # (i.e. TA3ActionBased, vs. TA1)
+    adm = adm_class(**adm_init_kwargs)
+
+    # HACK: need to invoke 'load_model' for ADMs that require it,
+    # maybe it makes more sense to load_model in the init method for
+    # those ADMs
+    if hasattr(adm, 'load_model'):
+        adm.load_model()
+
+    # Capture inputs and outputs in a similar format to what's used by
+    # our internal evaluation framework code
+    inputs_outputs = []
+
+    session_alignment_scores = []
+
+    completed_scenarios = set()
+
+    # Loop through available scenarios
+    while scenario := interface.start_scenario():
+        if scenario.id() == '':
+            log.info("Next scenario ID is blank, assuming we're done, exiting")
+            break
+        elif scenario.id() in completed_scenarios:
+            log.info("Already completed this scenario, assuming we're done, exiting")
+            break
+
+        if 'alignment_target_override' in config:
+            alignment_target = AlignmentTarget(
+                **config['alignment_target_override'])
+        elif align_to_target:
+            alignment_target = scenario.get_alignment_target()
+        else:
+            alignment_target = None
+
+        current_state = scenario.get_state()
+        scenario_complete = current_state.scenario_complete
+
+        # Tracking these to prevent getting stuck in a loop
+        noop_actions = []
+
+        while not scenario_complete:
+            available_actions = scenario.get_available_actions()
+
+            log.debug("[bold]*AVAILABLE ACTIONS*[/bold]",
+                      extra={"markup": True})
+            log.debug(json.dumps([a.to_dict() for a in available_actions], indent=4),
+                      extra={"highlighter": JSON_HIGHLIGHTER})
+
+            available_actions_filtered = []
+            for a in available_actions:
+                if a.action_type == ActionTypeEnum.TAG_CHARACTER:
+                    # Don't let ADM choose to tag a character unless there are
+                    # still untagged characters
+                    untagged_characters = [c for c in current_state.characters
+                                           if c.tag is None]
+                    if len(untagged_characters) == 0:
+                        log.debug("No untagged characters remaining, not "
+                                  "allowing {} action".format(ActionTypeEnum.TAG_CHARACTER))
+                        continue
+
+                unvisited_characters = [c for c in current_state.characters
+                                        if c.visited is None or not c.visited]
+                if a.action_type in {ActionTypeEnum.CHECK_ALL_VITALS,
+                                     ActionTypeEnum.CHECK_PULSE,
+                                     ActionTypeEnum.CHECK_RESPIRATION}:
+                    if len(unvisited_characters) == 0:
+                        log.debug("No unvisited characters remaining, not "
+                                  "allowing {} action".format(a.action_type))
+                        continue
+
+                if a.action_type == ActionTypeEnum.SITREP:
+                    conscious_characters = [c for c in current_state.characters
+                                            if c.vitals is None or (c.vitals is not None and c.vitals.conscious)]
+                    if len(unvisited_characters) == 0 or len(conscious_characters) == 0:
+                        log.debug("No unvisited or conscious characters remaining, not "
+                                  "allowing {} action".format(a.action_type))
+                        continue
+
+                if a in noop_actions:
+                    log.debug("Already took this action and there was no "
+                              "change in the scenario state, not allowing "
+                              "{} action".format(a.action_type))
+                    continue
+
+                available_actions_filtered.append(a)
+
+            if len(available_actions_filtered) == 0:
+                raise RuntimeError("No available actions from filtered list!")
+            elif len(available_actions_filtered) == 1:
+                log.info("** Choosing only available (filtered) action")
+                action_to_take = available_actions_filtered[0]
+            else:
+                action_to_take = adm.choose_action(
+                    current_state,
+                    available_actions_filtered,
+                    alignment_target if align_to_target else None,
+                    **adm_inference_kwargs)
+
+            log.debug("[bold]*ACTION BEING TAKEN*[/bold]",
+                      extra={"markup": True})
+            if isinstance(action_to_take, dict):
+                log.debug(json.dumps(action_to_take, indent=4),
+                          extra={"highlighter": JSON_HIGHLIGHTER})
+            else:
+                log.debug(json.dumps(action_to_take.to_dict(), indent=4),
+                          extra={"highlighter": JSON_HIGHLIGHTER})
+
+            action_choice_idx = None
+            for i, a in enumerate(available_actions):
+                if a.action_id == action_to_take.action_id:
+                    action_choice_idx = i
                     break
 
-        algorithm = LlamaIndex(
-            model_name=model,
-            **algorithm_kwargs_parsed)
+            inputs_outputs.append({'input': {'scenario_id': scenario.id(),
+                                             'full_state': current_state.to_dict(),
+                                             'state': current_state.unstructured,
+                                             'choices': [a.to_dict() for a in available_actions]},
+                                   'label': [{} if a.kdma_association is None else a.kdma_association for a in available_actions],
+                                   'output': {'choice': action_choice_idx,
+                                              'action': action_to_take.to_dict()}})
 
-    algorithm.load_model()
+            last_state = current_state
+            current_state = scenario.take_action(action_to_take)
 
-    for probe in scenario.iterate_probes():
-        probe_dict = probe.to_dict()
+            # Check that the scenario state has really changed
+            # Want to restrict actions that have already been taken that
+            # didn't change the state
+            _tmp_current_state = deepcopy(current_state)
+            _tmp_current_state.elapsed_time = last_state.elapsed_time
+            state_has_changed = (_tmp_current_state != last_state)
+            if state_has_changed:
+                noop_actions = []
+            else:
+                noop_actions.append(action_to_take)
 
-        casualties_dicts = scenario_dict['state'].get('casualties', [])
-        mission_unstructured =\
-            scenario_dict['state']['mission']['unstructured']
-        state_unstructured = None
+            scenario_complete = current_state.scenario_complete
 
-        if 'state' in probe_dict:
-            probe_state = probe_dict['state']
-            if 'casualties' in probe_state:
-                casualties_dicts = probe_dict['state']['casualties']
+            if scenario_complete:
+                completed_scenarios.add(scenario.id())
 
-            if('mission' in probe_state and
-               'unstructured' in probe_state['mission']):
-                mission_unstructured =\
-                  probe_state['mission']['unstructured']
+        if alignment_target is not None:
+            session_alignment = interface.get_session_alignment(
+                alignment_target.id)
 
-            if 'unstructured' in probe_state:
-                state_unstructured = probe_state['unstructured']
+            if session_alignment is None:
+                log.info("Couldn't get session alignment from interface")
+            else:
+                session_alignment_scores.append(session_alignment)
 
-        if probe_dict['type'] == ProbeType.MultipleChoice.value:
-            probe_options_dicts = probe_dict['options']
-        else:
-            probe_options_dicts = None
+                log.info("[bold]*TA1 Alignment Score*[/bold]",
+                         extra={"markup": True})
+                log.info(json.dumps(session_alignment.to_dict(), indent=4),
+                         extra={"highlighter": JSON_HIGHLIGHTER})
 
-        prompt = prepare_prompt(
-            scenario_dict['state']['unstructured'],
-            mission_unstructured,
-            state_unstructured,
-            probe_dict['prompt'],
-            casualties_dicts,
-            options=probe_options_dicts,
-            alignment_target=alignment_target_dict if align_to_target else None
-        )
-        log.info("[bold]* Prompt for ADM *[/bold]",
-                 extra={"markup": True})
-        log.info(prompt)
+    if save_input_output_to_path is not None:
+        with open(save_input_output_to_path, 'w') as f:
+            json.dump(inputs_outputs, f, indent=2)
 
-        raw_response = str(algorithm.run_inference(prompt))
-        log.info("[bold]* ADM raw response *[/bold]",
-                 extra={"markup": True})
-        log.info(raw_response)
-
-        if probe_dict['type'] == ProbeType.FreeResponse.value:
-            probe.respond({'justification': raw_response})
-        else:
-            # Assume multiple-choice style
-            selected_choice_idx, selected_choice = force_choice_func(
-                raw_response, [str(o['value']) for o in probe_dict['options']])
-            log.info("[bold]* Mapped selection *[/bold]",
-                     extra={"markup": True})
-            log.info(selected_choice)
-
-            selected_choice_id =\
-                probe_dict['options'][selected_choice_idx]['id']
-
-            probe.respond({'justification': raw_response,
-                           'choice': selected_choice_id})
-
-        if isinstance(probe, ProbeInterfaceWithAlignment):
-            probe_alignment_results = probe.get_alignment_results()
-            log.info("* Probe alignment score: {}".format(
-                    probe_alignment_results['score']))
-
-    if isinstance(scenario, ScenarioInterfaceWithAlignment):
-        scenario_alignment_results = scenario.get_alignment_results()
-        log.info("* Scenario alignment score: {}".format(
-            scenario_alignment_results['score']))
+    if len(session_alignment_scores) > 0:
+        if save_alignment_score_to_path is not None:
+            with open(save_alignment_score_to_path, 'w') as f:
+                json.dump([s.to_dict() for s in session_alignment_scores], f, indent=2)
 
 
 if __name__ == "__main__":

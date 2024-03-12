@@ -3,7 +3,7 @@ import re
 import random
 import os
 import pathlib
-from align_system.algorithms.lib.aligned_decision_maker import AlignedDecisionMaker
+from align_system.algorithms.abstracts import AlignedDecisionMaker
 
 from jinja2.exceptions import TemplateError
 
@@ -33,7 +33,8 @@ kdmas = {
     'denial',
     'moral_deservingness',
     'lives_saved',
-    'continuation_of_care'
+    'continuation_of_care',
+    'maximization'
 }
 
 kdma_remapping = {
@@ -134,13 +135,13 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
             else:
                 self.model = AutoModelForCausalLM.from_pretrained(self.hf_model, torch_dtype=self.precision)
                 self.model = self.model.to(self.device)
-            
+
             self.tokenizer = AutoTokenizer.from_pretrained(self.hf_model)
-            
+
             if self.chat_template is not None:
                 with open(os.path.join(chat_template_path, self.chat_template), 'r') as f:
                     self.tokenizer.chat_template = f.read().replace('    ', '').replace('\n', '')
-            
+
 
 
     def get_character_ids(self, character_str):
@@ -271,7 +272,7 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
             for message in dialog:
                 if message['role'] == 'system':
                     message['role'] = 'user'
-                
+
                 if len(new_dialog) == 0:
                     new_dialog.append(message)
                     continue
@@ -301,8 +302,6 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
         # Print the generated model output
         generated_output = self.tokenizer.decode(outputs.sequences[0][prompt_length:])
         inference_pair['output'] = generated_output
-        
-        print('INFERENCE PAIR\n', inference_pair)
 
         return generated_output, inference_pair
 
@@ -372,7 +371,7 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
         inference_pairs = []
         if not baseline:
             unsupported_kdmas = {kdma_remapping.get(k, k)
-                                for k in target_kdmas.keys()} - kdmas
+                                 for k in target_kdmas.keys()} - kdmas
             if len(unsupported_kdmas) > 0:
                 raise RuntimeError(f"KDMA(s) {unsupported_kdmas} not supported.")
 
@@ -386,7 +385,7 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
             if baseline:
                 system_message = load_system_message()
                 system_message_keys = 'baseline'
-                
+
             else:
                 system_message_keys = {kdma: 'high' if value > 5 else 'low'
                                     for kdma, value in target_kdmas.items()}
@@ -418,13 +417,13 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
                     break
                 except RuntimeError as e:
                     pass
-            
+
             if not good_parse:
                 reasoning, answer_idx, parse_method = Llama2SingleKDMAADM.bert_similarity_parse(high_response, shuffled_choices)
-            
+
             print('CHOSEN ANSWER IDX', answer_idx, shuffled_choices)
             assert answer_idx is not None, f'Failed to parse answer index from generated output: {low_response}'
-                
+
             responses.append({
                 'response': high_response,
                 'reasoning': reasoning,
@@ -434,7 +433,7 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
                 'aligned': True,
                 'parse_method': parse_method,
             })
-        
+
         for _ in range(n_negative_sampels):
             system_message_keys = {kdma: 'high' if not value > 5 else 'low'
                                     for kdma, value in target_kdmas.items()}
@@ -465,12 +464,12 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
                     break
                 except RuntimeError as e:
                     pass
-                    
+
             if not good_parse:
                 reasoning, answer_idx, parse_method = Llama2SingleKDMAADM.bert_similarity_parse(low_response, shuffled_choices)
 
             assert answer_idx is not None, f'Failed to parse answer index from generated output: {low_response}'
-                
+
             responses.append({
                 'response': low_response,
                 'reasoning': reasoning,
@@ -558,9 +557,9 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
                     pass
         except json.JSONDecodeError:
             pass
-        
 
-                
+
+
         if answer_idx is None:
             parse_method = 'string'
             # If json parsing fails, do string parsing
@@ -583,15 +582,15 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
 
                 if answer_idx is not None:
                     break
-        
+
         if reasoning is None:
             reasoning = generated_output
-        
+
         if answer_idx is None or answer_idx >= n_choices:
             raise RuntimeError(f'Failed to parse answer index < {n_choices} from generated output: {generated_output}')
 
         return reasoning, answer_idx, parse_method
-    
+
     @staticmethod
     def bert_similarity_parse(generated_output, choices):
         print('BERT SIMILARITY PARSE')
@@ -725,11 +724,15 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
             log.warning(f"Error calculating votes: {e}")
             choice_scores = [None] * len(choices)
 
+        log.debug("[bold]*RESPONSES*[bold]", extra={"markup": True})
+        for i, ip in enumerate(inference_pairs):
+            log.debug("[bold]*response {}*[bold]".format(i+1),
+                      extra={"markup": True})
+            log.debug(ip['output'])
+
         log.explain("[bold]*CHOICE SCORES*[/bold]",
                     extra={"markup": True})
-        log.explain(json.dumps({c: s for c, s in zip(choices, choice_scores)},
-                               indent=4),
-                    extra={"highlighter": JSON_HIGHLIGHTER})
+        log.explain("\n".join([f"{c}: {s}" for c, s in zip(choices, choice_scores)]))
 
         results = {
             'prompt': prompt,
@@ -781,16 +784,16 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
             prompt += f'\n{sample["probe"]}'
 
         choices = sample['choices']
-        
+
         labels = kwargs.get('labels', {})
-        
+
         alignment_target = None
-        if target_kdma_values is not None:
+        if target_kdma_values is not None and len(target_kdma_values) > 0:
             target_kdma = next(iter(next(iter(filter(lambda x: len(x) > 0, labels))))) # get the frist key of the first label that is not empty
-            
+
             for label in labels:
                 assert len(label) == 0 or (target_kdma in label and len(label) == 1), f'All labels must have the same KDMA: labels={labels}'
-                
+
             alignment_target = {
                 target_kdma: target_kdma_values[target_kdma]
             }
@@ -804,7 +807,7 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
             baseline=kwargs.get('baseline', False),
             shuffle=kwargs.get('shuffle', False)
         )
-        
+
         raw_data = {
             'params': {
                 'model': self.hf_model,
@@ -825,3 +828,310 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
                 'raw_data': raw_data,
             }
         }
+
+    def choose_action(self, scenario_state, available_actions, alignment_target, **kwargs):
+        from swagger_client.models import ActionTypeEnum
+
+        kdma_name_map = {
+            'MoralDesert': 'moral_deservingness',
+            'maximization': 'maximization',
+        }
+
+        if alignment_target is None or len(alignment_target.kdma_values) == 0:
+            target_kdma_values = {}
+        else:
+            alignment_target_dict = alignment_target.to_dict()
+            target_kdma_values = {
+                kdma_name_map[k['kdma']]: k['value'] * 10
+                for k in alignment_target_dict.get('kdma_values', ())
+            }
+
+        scenario = '\nCHARACTERS:\n'
+
+        for character in scenario_state.characters:
+            scenario += f'{character.name}: {character.unstructured}\n'
+            scenario += f'{character.name}\'s intent: {character.intent}\n\n'
+
+        scenario += f'\nSITUATION:\n{scenario_state.unstructured}'
+
+        state = None
+
+        probe = ''
+
+        choices = [
+            action.unstructured
+            for action in available_actions
+        ]
+
+        response = self.__call__({
+            'scenario': scenario,
+            'state': state,
+            'probe': probe,
+            'choices': choices},
+            target_kdma_values,
+            labels=[target_kdma_values]*len(choices),
+            **kwargs)
+
+        action_to_take = available_actions[response['choice']]
+
+        if action_to_take.action_type == ActionTypeEnum.APPLY_TREATMENT:
+            # If the additional required fields are already populated
+            # for the action, don't need ask the LLM again
+            if (action_to_take.parameters is None
+                or not {'treatment', 'location'}.issubset(
+                    action_to_take.parameters.keys())):
+                action_to_take = self.populate_treatment_parameters(
+                        scenario_state, action_to_take, alignment_target, **kwargs)
+        elif action_to_take.action_type == ActionTypeEnum.TAG_CHARACTER:
+            # If the additional required fields are already populated
+            # for the action, don't need ask the LLM again
+            if (action_to_take.character_id is None
+                or action_to_take.parameters is None
+                or not {'category'}.issubset(
+                    action_to_take.parameters.keys())):
+                action_to_take = self.populate_tagging_parameters(
+                    scenario_state, action_to_take, alignment_target, **kwargs)
+        elif action_to_take.action_type in {ActionTypeEnum.CHECK_ALL_VITALS,
+                                            ActionTypeEnum.CHECK_PULSE,
+                                            ActionTypeEnum.CHECK_RESPIRATION,
+                                            ActionTypeEnum.MOVE_TO_EVAC}:
+            # These actions require a `character_id`
+            if action_to_take.character_id is None:
+                action_to_take = self.generic_populate_character_id(
+                    scenario_state, action_to_take, alignment_target, **kwargs)
+
+        return action_to_take
+
+    def populate_treatment_parameters(self, scenario_state, treatment_action, alignment_target, **kwargs):
+        from align_system.prompt_engineering.common import (
+            prepare_treatment_selection_prompt)
+        from swagger_client.models import ActionTypeEnum, InjuryLocationEnum
+        from align_system.utils import get_swagger_class_enum_values
+
+        assert treatment_action.action_type == ActionTypeEnum.APPLY_TREATMENT
+
+        character_id = treatment_action.character_id
+        if character_id is None:
+            # Need to populate character_id on treatment action
+            treatment_action = self.generic_populate_character_id(
+                scenario_state, treatment_action, alignment_target, **kwargs)
+
+            character_id = treatment_action.character_id
+
+        matching_characters = [c for c in scenario_state.characters
+                               if c.id == character_id]
+
+        assert len(matching_characters) == 1
+
+        character_to_treat = matching_characters[0]
+
+        available_supplies = [s for s in scenario_state.supplies if s.quantity > 0]
+
+        treatment_prompt = prepare_treatment_selection_prompt(
+            character_to_treat.unstructured,
+            character_to_treat.vitals.to_dict(),
+            [s.to_dict() for s in available_supplies])
+
+        for _ in range(kwargs.get('answer_attempts', 5)):
+            treatment_dialog =\
+                self.build_multiple_choice_dialog(
+                    treatment_prompt,
+                    [s.to_dict() for s in available_supplies],
+                    json_format=TREATMENT_MULTIPLE_CHOICE_JSON_FORMAT)
+
+            log.debug("[bold]*TREATMENT DIALOG*[/bold]",
+                      extra={"markup": True})
+            self.log_dialog(treatment_dialog)
+
+            raw_treatment_response, _ = self.respond_to_dialog(
+                treatment_dialog)
+
+            log.info("** ADM raw treatment response: {}".format(
+                raw_treatment_response))
+
+            parsed_treatment_output = self.attempt_generic_parse(  # noqa
+                raw_treatment_response, ['Reasoning', 'Answer', 'Location'])  # noqa
+
+            if parsed_treatment_output is not None:
+                treatment_idx = parsed_treatment_output['Answer']
+
+                if len(available_supplies) <= treatment_idx:
+                    log.info('** Selected treatment_idx out of range of '
+                             'available treatment options, retrying!')
+                    continue
+
+                treatment = available_supplies[treatment_idx].type  # noqa
+
+                treatment_location = parsed_treatment_output['Location']
+
+                if treatment_action.parameters is None:
+                    treatment_action.parameters = {}
+
+                treatment_action.parameters['treatment'] = treatment
+
+                valid_treatment_locations = get_swagger_class_enum_values(
+                    InjuryLocationEnum)
+
+                if not isinstance(treatment_location, str):
+                    # If type is int, could be an index into the
+                    # action_to_take)locations provided in the system
+                    # action_to_take)prompt, consider handling in the
+                    # action_to_take)future
+                    log.warning("*** Treatment location value is not a string"
+                                ", retrying!")
+                    continue
+                if treatment_location in valid_treatment_locations:
+                    treatment_action.parameters['location'] = treatment_location
+                else:
+                    # Ensure that the treatment location is valid
+                    _, treatment_loc_idx, _ = self.bert_similarity_parse(
+                        treatment_location, valid_treatment_locations)
+
+                    treatment_action.parameters['location'] =\
+                        valid_treatment_locations[treatment_loc_idx]
+
+                break
+            else:
+                log.info('** Failed to parse treatment')
+
+        return treatment_action
+
+    def populate_tagging_parameters(self, scenario_state, tagging_action, alignment_target, **kwargs):
+        from align_system.prompt_engineering.common import (
+            prepare_tagging_selection_prompt)
+        from swagger_client.models import ActionTypeEnum, CharacterTagEnum
+        from align_system.utils import get_swagger_class_enum_values
+
+        assert tagging_action.action_type == ActionTypeEnum.TAG_CHARACTER
+        # Ask the system to specify which triage tag to apply
+
+        untagged_characters = [c for c in scenario_state.characters if c.tag is None]
+
+        tagging_prompt = prepare_tagging_selection_prompt(
+            [c.to_dict() for c in untagged_characters],
+            get_swagger_class_enum_values(CharacterTagEnum))
+
+        for _ in range(kwargs.get('answer_attempts', 5)):
+            tagging_dialog = self.build_multiple_choice_dialog(
+                tagging_prompt,
+                [c.unstructured.strip()
+                 for c in untagged_characters],
+                json_format=TAGGING_MULTIPLE_CHOICE_JSON_FORMAT)
+
+            log.debug("[bold]*TAGGING DIALOG*[/bold]",
+                      extra={"markup": True})
+            self.log_dialog(tagging_dialog)
+
+            raw_tagging_response, _ = self.respond_to_dialog(
+                tagging_dialog)
+
+            log.info("** ADM raw tagging response: {}".format(
+                raw_tagging_response))
+
+            parsed_tagging_output = self.attempt_generic_parse(  # noqa
+                raw_tagging_response, ['Reasoning', 'Answer', 'Tag'])  # noqa
+
+            if parsed_tagging_output is not None:
+                if len(untagged_characters) == 1:
+                    log.debug("** Force selecting only available character")
+                    character_idx = 0
+                else:
+                    character_idx = parsed_tagging_output['Answer']
+
+                    if not isinstance(character_idx, int):
+                        log.warning('** character_idx ({}) not an integer'
+                                    ', retrying!'.format(character_idx))
+                        continue
+
+                    if len(untagged_characters) <= character_idx:
+                        log.info('** Selected character_idx out of range of '
+                                 'available treatment options, retrying!')
+                        continue
+
+                character_to_tag_id = untagged_characters[character_idx].id  # noqa
+
+                tag = parsed_tagging_output['Tag']
+                if not isinstance(tag, str):
+                    log.warning("** Selected tag ({}) not of type string"
+                                ", retrying!".format(tag))
+                    continue
+
+                # Populate required parameters for tagging action
+                tagging_action.character_id = character_to_tag_id
+
+                if tagging_action.parameters is None:
+                    tagging_action.parameters = {}
+
+                tagging_action.parameters['category'] = tag
+
+                break
+            else:
+                log.info('** Failed to parse tagging')
+
+        return tagging_action
+
+    def generic_populate_character_id(self, scenario_state, initial_action, alignment_target, **kwargs):
+        from swagger_client.models import ActionTypeEnum
+        from align_system.prompt_engineering.common import (
+            prepare_character_selection_prompt)
+        character_selection_prompt = prepare_character_selection_prompt(
+            initial_action)
+
+        filtered_characters = []
+        for c in scenario_state.characters:
+            if initial_action.action_type in {ActionTypeEnum.CHECK_ALL_VITALS,
+                                              ActionTypeEnum.CHECK_PULSE,
+                                              ActionTypeEnum.CHECK_RESPIRATION}:
+                # Don't allow the ADM to check vitals on
+                # a character that's already been "visited"
+                if c.visited:
+                    continue
+
+            filtered_characters.append(c)
+
+        for _ in range(kwargs.get('answer_attempts', 5)):
+            character_selection_dialog = self.build_multiple_choice_dialog(
+                character_selection_prompt,
+                [c.unstructured.strip()
+                 for c in filtered_characters])
+
+            log.debug("[bold]*CHARACTER SELECTION DIALOG*[/bold]",
+                      extra={"markup": True})
+            self.log_dialog(character_selection_dialog)
+
+            raw_character_selection_response, _ = self.respond_to_dialog(
+                character_selection_dialog)
+
+            log.info("** ADM raw character_selection response: {}".format(
+                raw_character_selection_response))
+
+            parsed_character_selection_output = self.attempt_generic_parse(  # noqa
+                raw_character_selection_response, ['Reasoning', 'Answer'])  # noqa
+
+            if parsed_character_selection_output is not None:
+                if len(filtered_characters) == 1:
+                    log.debug("** Force selecting only available character")
+                    character_idx = 0
+                else:
+                    character_idx = parsed_character_selection_output['Answer']
+
+                    if not isinstance(character_idx, int):
+                        log.warning('** character_idx ({}) not an integer'
+                                    ', retrying!'.format(character_idx))
+                        continue
+
+                    if len(filtered_characters) <= character_idx:
+                        log.warning('** Selected character_idx out of range of '
+                                    'available treatment options, retrying!')
+                        continue
+
+                character_id = filtered_characters[character_idx].id  # noqa
+
+                # Populate required parameters for character_selection action
+                initial_action.character_id = character_id
+
+                break
+            else:
+                log.info('** Failed to parse character selection')
+
+        return initial_action

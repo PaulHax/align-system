@@ -20,8 +20,6 @@ Repository](https://github.com/NextCenturyCorporation/itm-evaluation-server).
 
 There's a corresponding client module: [TA3 Evaluation Client](https://github.com/NextCenturyCorporation/itm-evaluation-client)
 
-Note that this client module isn't a required dependency for the ALIGN system code.
-
 #### Soartech's TA1 API
 
 Soartech's TA1 service code can be found at: [Soartech's TA1
@@ -43,13 +41,14 @@ install git+https://github.com/ITM-Kitware/align-system.git`.
 ## Running the system against the TA3 action-based API
 
 ```
-$ run_action_based_align_system --help
-usage: run_action_based_align_system [-h] {TA3ActionBased} ...
+$ run_align_system --help
+usage: run_align_system [-h] {TA3ActionBased} ...
 
-ALIGN Action Based System CLI
+ALIGN System CLI
 
 positional arguments:
-  {TA3ActionBased}  Select interface. Adding --help after interface selection will print interface and system specified arguments
+  {TA3ActionBased}  Select interface. Adding --help after interface selection will print interface and
+                    system specified arguments
     TA3ActionBased  Interface with CACI's TA3 web-based service
 
 options:
@@ -59,9 +58,13 @@ options:
 Running `--help` after the selected interface prints the full set of options for the interface and system.  E.g.:
 
 ```
-$ run_action_based_align_system TA3ActionBased --help
-usage: run_action_based_align_system TA3ActionBased [-h] [-u USERNAME] [-s SESSION_TYPE] [-e API_ENDPOINT] [--training-session] [-m MODEL] [-t] [-a ALGORITHM] [-A ALGORITHM_KWARGS]
-                                                    [--similarity-measure SIMILARITY_MEASURE]
+$ run_align_system TA3ActionBased --help
+usage: run_align_system TA3ActionBased [-h] [-u USERNAME] [-s SESSION_TYPE]
+                                       [-e API_ENDPOINT] [--training-session]
+                                       [--scenario-id SCENARIO_ID] -c ADM_CONFIG [-t]
+                                       [-l LOGLEVEL] [--logfile-path LOGFILE_PATH]
+                                       [--save-input-output-to-path SAVE_INPUT_OUTPUT_TO_PATH]
+                                       [--save-alignment-score-to-path SAVE_ALIGNMENT_SCORE_TO_PATH]
 
 options:
   -h, --help            show this help message and exit
@@ -70,28 +73,30 @@ options:
   -s SESSION_TYPE, --session-type SESSION_TYPE
                         TA3 API Session Type (default: "eval")
   -e API_ENDPOINT, --api_endpoint API_ENDPOINT
-                        Restful API endpoint for scenarios / probes (default: "http://127.0.0.1:8080")
+                        Restful API endpoint for scenarios / probes (default:
+                        "http://127.0.0.1:8080")
   --training-session    Return training related information from API requests
-  -m MODEL, --model MODEL
-                        LLM Baseline model to use
+  --scenario-id SCENARIO_ID
+                        Specific scenario to run
+  -c ADM_CONFIG, --adm-config ADM_CONFIG
+                        Path to ADM config YAML
   -t, --align-to-target
                         Align algorithm to target KDMAs
-  -a ALGORITHM, --algorithm ALGORITHM
-                        Algorithm to use
-  -A ALGORITHM_KWARGS, --algorithm-kwargs ALGORITHM_KWARGS
-                        JSON encoded dictionary of kwargs for algorithm initialization
-  --similarity-measure SIMILARITY_MEASURE
-                        Similarity measure to use (default: 'bert')
+  -l LOGLEVEL, --loglevel LOGLEVEL
+  --logfile-path LOGFILE_PATH
+                        Also write log output to the specified file
+  --save-input-output-to-path SAVE_INPUT_OUTPUT_TO_PATH
+                        Save system inputs and outputs to a file
+  --save-alignment-score-to-path SAVE_ALIGNMENT_SCORE_TO_PATH
+                        Save alignment score output to a file
 ```
 
 Here's an example invocation of the system using the TA3 Action-based interface (assuming it's running locally on port `8080`):
 ```
 $ run_action_based_align_system TA3ActionBased \
-           -e "http://127.0.0.1:8080" \
-           --algorithm "llama_index" \
-           --model falcon \
-           -s soartech \
-           --algorithm-kwargs '{"domain_docs_dir": "/data/shared/MVPData/DomainDocumentsPDF"}'
+           --adm-config adm_configs/metrics-evaluation/single_kdma_adm_adept_baseline.yml \
+           --api_endpoint "http://127.0.0.1:8080" \
+           --session-type adept
 ```
 
 *NOTE* - The first time you run the system it can take upwards of a
@@ -102,11 +107,11 @@ model is cached.
 
 ## Running the system against TA1 services or local files
 
-In the Python environment you have set up, a CLI application called `run_align_system` should now be available.  This single entrypoint supports interfacing with both local files on disk, and the TA3 web-based API.  Running the script with `--help` shows which interfaces are available:
+In the Python environment you have set up, a CLI application called `run_simplified_align_system` should now be available.  This single entrypoint supports interfacing with both local files on disk, and the TA3 web-based API.  Running the script with `--help` shows which interfaces are available:
 
 ```
-$ run_align_system --help
-usage: run_align_system [-h] {TA1Soartech,LocalFiles,TA1Adept} ...
+$ run_simplified_align_system --help
+usage: run_simplified_align_system [-h] {TA1Soartech,LocalFiles,TA1Adept} ...
 
 ALIGN System CLI
 
@@ -124,8 +129,8 @@ options:
 Running `--help` after the selected interface prints the full set of options for the interface and system.  E.g.:
 
 ```
-$ run_align_system TA1Soartech --help
-usage: run_align_system TA1Soartech [-h] [-s [SCENARIOS ...]] [--alignment-targets [ALIGNMENT_TARGETS ...]] [-e API_ENDPOINT] [-m MODEL] [-t] [-a ALGORITHM] [-A ALGORITHM_KWARGS] [--similarity-measure SIMILARITY_MEASURE]
+$ run_simplified_align_system TA1Soartech --help
+usage: run_simplified_align_system TA1Soartech [-h] [-s [SCENARIOS ...]] [--alignment-targets [ALIGNMENT_TARGETS ...]] [-e API_ENDPOINT] [-m MODEL] [-t] [-a ALGORITHM] [-A ALGORITHM_KWARGS] [--similarity-measure SIMILARITY_MEASURE]
 
 options:
   -h, --help            show this help message and exit
@@ -153,7 +158,7 @@ options:
 We've included some example scenario, probe, and alignment target data for testing.  These files can be found in the `example_data` directory.  Here's an example system invocation with the provided example files:
 
 ```
-run_align_system LocalFiles \
+run_simplified_align_system LocalFiles \
     -s example_data/scenario_1/scenario.json \
     --alignment-target-filepath example_data/scenario_1/alignment_target.json \
     -p example_data/scenario_1/probe{1,2,3,4}.json \
@@ -163,56 +168,64 @@ run_align_system LocalFiles \
     --align-to-target
 ```
 
-## ADM Invocations
+## Metrics Evaluation ADM Invocations
 
-### Simple Action-based Baseline ADM
+### Aligned ADM for ADEPT scenarios
 
-Simple baseline (unaligned) system using the `falcon` model:
 ```
 run_action_based_align_system TA3ActionBased \
-           --algorithm "llama_index" \
-           --model falcon \
-           -s soartech \
-           --algorithm-kwargs '{"retrieval_enabled": false}' \
-           --algorithm "llama_index" \
-           --model falcon
+           --adm-config adm_configs/metrics-evaluation/delivered/single_kdma_adm_adept.yml \
+           --username single_kdma_aligned_adm_adept \
+           --align-to-target \
+           --session-type adept
 ```
 
-### Simple Action-based Aligned ADM
+### Aligned Hybrid Kaleido ADM for ADEPT scenarios
 
-Simple aligned system using the `falcon` model (requires domain document PDFs):
 ```
 run_action_based_align_system TA3ActionBased \
-           --algorithm "llama_index" \
-           --model falcon \
-           -s soartech \
-           --algorithm-kwargs '{"domain_docs_dir": "/path/to/DomainDocumentsPDF"}' \
-           --algorithm-kwargs '{"retrieval_enabled": false}' \
-           --algorithm "llama_index" \
-           --model falcon \
-           --align-to-target
+           --adm-config adm_configs/metrics-evaluation/delivered/hybrid_kaleido.yml \
+           --username hybrid_kaleido_aligned_adm_adept \
+           --align-to-target \
+           --session-type adept
 ```
 
-### Action-based Chat Baseline ADM
-
-Unaligned system using a Llama 2 chat model:
+### Baseline ADM for ADEPT scenarios
 
 ```
-run_action_based_chat_baseline TA3ActionBased \
-           -s adept \
-           --model meta-llama/Llama-2-13b-chat-hf
+run_action_based_align_system TA3ActionBased \
+           --adm-config adm_configs/metrics-evaluation/delivered/single_kdma_adm_baseline.yml \
+           --username single_kdma_baseline_adm_adept \
+           --session-type adept
 ```
 
-### Action-based Chat Aligned ADM
-
-Aligned system using a Llama 2 chat model:
+### Aligned ADM for SoarTech scenarios
 
 ```
-run_action_based_chat_baseline TA3ActionBased \
-           -s adept \
-           --model meta-llama/Llama-2-13b-chat-hf \
-           --precision half \
-           --align-to-target
+run_action_based_align_system TA3ActionBased \
+           --adm-config adm_configs/metrics-evaluation/delivered/single_kdma_adm_soartech.yml \
+           --username single_kdma_aligned_adm_soartech \
+           --align-to-target \
+           --session-type soartech
+```
+
+### Aligned Hybrid Kaleido ADM for SoarTech scenarios
+
+```
+run_action_based_align_system TA3ActionBased \
+           --adm-config adm_configs/metrics-evaluation/delivered/hybrid_kaleido.yml \
+           --username hybrid_kaleido_aligned_adm_soartech \
+           --align-to-target \
+           --session-type soartech
+```
+
+### Baseline ADM for SoarTech scenarios
+
+```
+run_action_based_align_system TA3ActionBased \
+           --adm-config adm_configs/metrics-evaluation/delivered/single_kdma_adm_baseline.yml \
+           --username single_kdma_baseline_adm_soartech \
+           --session-type soartech
 ```
 
 
