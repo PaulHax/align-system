@@ -732,9 +732,7 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
 
         log.explain("[bold]*CHOICE SCORES*[/bold]",
                     extra={"markup": True})
-        log.explain(json.dumps({c: s for c, s in zip(choices, choice_scores)},
-                               indent=4),
-                    extra={"highlighter": JSON_HIGHLIGHTER})
+        log.explain("\n".join([f"{c}: {s}" for c, s in zip(choices, choice_scores)]))
 
         results = {
             'prompt': prompt,
