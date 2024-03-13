@@ -177,7 +177,27 @@ def run_action_based_chat_system(interface,
                                   "allowing {} action".format(a.action_type))
                         continue
 
-                if a in noop_actions:
+                is_a_noop_action = False
+                for noop_action in noop_actions:
+                    if a == noop_action:
+                        is_a_noop_action = True
+
+                    # HACK: In some cases the ADM can get stuck
+                    # attempting to use the generic APPLY_TREATMENT
+                    # action over and over to no affect
+                    if noop_action.action_type == ActionTypeEnum.APPLY_TREATMENT:
+                        _tmp_noop_action = deepcopy(noop_action)
+
+                        _tmp_noop_action.parameters = None
+                        _tmp_noop_action.character_id = None
+
+                        if a == _tmp_noop_action:
+                            is_a_noop_action = True
+                            log.debug("Handled case where ADM might be stuck "
+                                      "applying treatment over and over to no "
+                                      "effect, not allowing {} action".format(a.action_type))
+
+                if is_a_noop_action:
                     log.debug("Already took this action and there was no "
                               "change in the scenario state, not allowing "
                               "{} action".format(a.action_type))
