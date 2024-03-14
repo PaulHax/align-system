@@ -149,6 +149,19 @@ def run_action_based_chat_system(interface,
 
             available_actions_filtered = []
             for a in available_actions:
+                if len(current_state.characters) == 0:
+                    # Restrict actions that require a character when
+                    # no characters exist
+                    if a.action_type in {ActionTypeEnum.APPLY_TREATMENT,
+                                         ActionTypeEnum.CHECK_ALL_VITALS,
+                                         ActionTypeEnum.CHECK_PULSE,
+                                         ActionTypeEnum.CHECK_RESPIRATION,
+                                         ActionTypeEnum.MOVE_TO_EVAC,
+                                         ActionTypeEnum.TAG_CHARACTER}:
+                        log.debug("No characters in current state, not "
+                                  "allowing {} action".format(a.action_type))
+                        continue
+
                 if a.action_type == ActionTypeEnum.TAG_CHARACTER:
                     # Don't let ADM choose to tag a character unless there are
                     # still untagged characters
@@ -258,6 +271,9 @@ def run_action_based_chat_system(interface,
 
             if scenario_complete:
                 completed_scenarios.add(scenario.id())
+            elif action_to_take.action_type == ActionTypeEnum.END_SCENE:
+                log.info("ADM Chose to END_SCENE, assuming scenario is complete")
+                scenario_complete = True
 
         if alignment_target is not None:
             session_alignment = interface.get_session_alignment(
