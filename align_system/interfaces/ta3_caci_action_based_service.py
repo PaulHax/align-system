@@ -15,11 +15,16 @@ class TA3CACIActionBasedServiceInterface(Interface):
                  username='ALIGN-ADM',
                  api_endpoint='http://127.0.0.1:8080',
                  session_type='eval',
-                 scenario_id=None,
+                 scenario_ids=[],
                  training_session=False):
         self.api_endpoint = api_endpoint
         self.username = username
-        self.scenario_id = scenario_id
+        self.scenario_ids = scenario_ids
+        if len(self.scenario_ids) > 0:
+            self.scenarios_specified = True
+        else:
+            self.scenarios_specified = False
+
         self.training_session = training_session
 
         config = Configuration()
@@ -38,8 +43,12 @@ class TA3CACIActionBasedServiceInterface(Interface):
 
     def start_scenario(self):
         scenario_request_params = {'session_id': self.session_id}
-        if self.scenario_id is not None:
-            scenario_request_params['scenario_id'] = self.scenario_id
+        if len(self.scenario_ids) > 0:
+            scenario_id = self.scenario_ids.pop(0)
+            scenario_request_params['scenario_id'] = scenario_id
+        elif self.scenarios_specified:
+            # Have run through all specified scenarios
+            return None
 
         scenario = self.connection.start_scenario(
             **scenario_request_params)
@@ -79,10 +88,12 @@ class TA3CACIActionBasedServiceInterface(Interface):
                             default=False,
                             help='Return training related information from '
                                  'API requests')
-        parser.add_argument('--scenario-id',
+        parser.add_argument('-S', '--scenario-id',
+                            dest='scenario_ids',
                             required=False,
-                            default=None,
-                            help='Specific scenario to run')
+                            default=[],
+                            nargs='*',
+                            help='Specific scenario to run (multiples allowed)')
 
         return parser
 
