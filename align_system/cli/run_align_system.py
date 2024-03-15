@@ -271,9 +271,6 @@ def run_action_based_chat_system(interface,
 
             if scenario_complete:
                 completed_scenarios.add(scenario.id())
-            elif action_to_take.action_type == ActionTypeEnum.END_SCENE:
-                log.info("ADM Chose to END_SCENE, assuming scenario is complete")
-                scenario_complete = True
 
         if alignment_target is not None:
             session_alignment = interface.get_session_alignment(
