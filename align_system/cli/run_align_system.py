@@ -182,14 +182,6 @@ def run_action_based_chat_system(interface,
                                   "allowing {} action".format(a.action_type))
                         continue
 
-                if a.action_type == ActionTypeEnum.SITREP:
-                    conscious_characters = [c for c in current_state.characters
-                                            if c.vitals is None or (c.vitals is not None and c.vitals.conscious)]
-                    if len(unvisited_characters) == 0 or len(conscious_characters) == 0:
-                        log.debug("No unvisited or conscious characters remaining, not "
-                                  "allowing {} action".format(a.action_type))
-                        continue
-
                 is_a_noop_action = False
                 for noop_action in noop_actions:
                     if a == noop_action:
