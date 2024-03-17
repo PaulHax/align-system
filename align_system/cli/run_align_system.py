@@ -114,15 +114,10 @@ def run_action_based_chat_system(interface,
 
     session_alignment_scores = []
 
-    completed_scenarios = set()
-
     # Loop through available scenarios
     while scenario := interface.start_scenario():
         if scenario.id() == '':
             log.info("Next scenario ID is blank, assuming we're done, exiting")
-            break
-        elif scenario.id() in completed_scenarios:
-            log.info("Already completed this scenario, assuming we're done, exiting")
             break
 
         if 'alignment_target_override' in config:
@@ -262,7 +257,8 @@ def run_action_based_chat_system(interface,
             scenario_complete = current_state.scenario_complete
 
             if scenario_complete:
-                completed_scenarios.add(scenario.id())
+                log.info("Final state unstructured: {}".format(
+                    current_state.unstructured))
 
         if alignment_target is not None:
             session_alignment = interface.get_session_alignment(
