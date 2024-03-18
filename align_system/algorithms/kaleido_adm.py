@@ -255,9 +255,13 @@ class KaleidoADM(AlignedDecisionMaker, ActionBasedADM):
             elif isinstance(kwargs['kdma_descriptions_map'], dict):
                 kdma_descriptions_map = kwargs['kdma_descriptions_map']
 
-        template = 'What action do you take? "{{choice}}" instead of {{other_choices}}.  In the context of the following scenario: {{scene_state}} {{mission}} {{decision_environment}} With the following casualties:\n{{characters_str}}'
-        # TODO: Parameterize this
-        # template = 'Choosing to "{{choice}}".  In the context of the following scenario: {{scene_state}} {{mission}} {{decision_environment}} With the following casualties:\n{{characters_str}}'
+        if 'action_template' in kwargs:
+            # Example alternate template without `other_choices`:
+            # template = 'Choosing to "{{choice}}".  In the context of the following scenario: {{scene_state}} {{mission}} {{decision_environment}} With the following casualties:\n{{characters_str}}'
+            template = kwargs['action_template']
+        else:
+            template = 'What action do you take? "{{choice}}" instead of {{other_choices}}.  In the context of the following scenario: {{scene_state}} {{mission}} {{decision_environment}} With the following casualties:\n{{characters_str}}'
+
         characters_str = '\n'.join(['{} ({}): {}'.format(c.name, c.id, c.unstructured) for c in scenario_state.characters])
         if scenario_state.mission is None:
             mission_str = ''

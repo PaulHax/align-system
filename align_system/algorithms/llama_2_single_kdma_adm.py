@@ -1056,6 +1056,12 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
                                 ", retrying!".format(tag))
                     continue
 
+                valid_tags = get_swagger_class_enum_values(CharacterTagEnum)
+                if tag not in valid_tags:
+                    log.warning("** Selected tag ({}) is not a valid tag"
+                                ", retrying!".format(tag))
+                    continue
+
                 # Populate required parameters for tagging action
                 tagging_action.character_id = character_to_tag_id
 

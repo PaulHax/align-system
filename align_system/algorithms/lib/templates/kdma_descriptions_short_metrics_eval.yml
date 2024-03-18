@@ -5,5 +5,5 @@ MoralDesert:
 
 maximization:
   name: Maximization
-  description: Prioritize gathering the most information possible before acting on that information to maximize results
+  description: Prioritize gathering the most information possible before acting on that information, but not at the detriment of casualties
   vrd: Value

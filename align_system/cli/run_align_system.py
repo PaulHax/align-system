@@ -114,15 +114,10 @@ def run_action_based_chat_system(interface,
 
     session_alignment_scores = []
 
-    completed_scenarios = set()
-
     # Loop through available scenarios
     while scenario := interface.start_scenario():
         if scenario.id() == '':
             log.info("Next scenario ID is blank, assuming we're done, exiting")
-            break
-        elif scenario.id() in completed_scenarios:
-            log.info("Already completed this scenario, assuming we're done, exiting")
             break
 
         if 'alignment_target_override' in config:
@@ -149,6 +144,19 @@ def run_action_based_chat_system(interface,
 
             available_actions_filtered = []
             for a in available_actions:
+                if len(current_state.characters) == 0:
+                    # Restrict actions that require a character when
+                    # no characters exist
+                    if a.action_type in {ActionTypeEnum.APPLY_TREATMENT,
+                                         ActionTypeEnum.CHECK_ALL_VITALS,
+                                         ActionTypeEnum.CHECK_PULSE,
+                                         ActionTypeEnum.CHECK_RESPIRATION,
+                                         ActionTypeEnum.MOVE_TO_EVAC,
+                                         ActionTypeEnum.TAG_CHARACTER}:
+                        log.debug("No characters in current state, not "
+                                  "allowing {} action".format(a.action_type))
+                        continue
+
                 if a.action_type == ActionTypeEnum.TAG_CHARACTER:
                     # Don't let ADM choose to tag a character unless there are
                     # still untagged characters
@@ -169,15 +177,27 @@ def run_action_based_chat_system(interface,
                                   "allowing {} action".format(a.action_type))
                         continue
 
-                if a.action_type == ActionTypeEnum.SITREP:
-                    conscious_characters = [c for c in current_state.characters
-                                            if c.vitals is None or (c.vitals is not None and c.vitals.conscious)]
-                    if len(unvisited_characters) == 0 or len(conscious_characters) == 0:
-                        log.debug("No unvisited or conscious characters remaining, not "
-                                  "allowing {} action".format(a.action_type))
-                        continue
+                is_a_noop_action = False
+                for noop_action in noop_actions:
+                    if a == noop_action:
+                        is_a_noop_action = True
 
-                if a in noop_actions:
+                    # HACK: In some cases the ADM can get stuck
+                    # attempting to use the generic APPLY_TREATMENT
+                    # action over and over to no affect
+                    if noop_action.action_type == ActionTypeEnum.APPLY_TREATMENT:
+                        _tmp_noop_action = deepcopy(noop_action)
+
+                        _tmp_noop_action.parameters = None
+                        _tmp_noop_action.character_id = None
+
+                        if a == _tmp_noop_action:
+                            is_a_noop_action = True
+                            log.debug("Handled case where ADM might be stuck "
+                                      "applying treatment over and over to no "
+                                      "effect, not allowing {} action".format(a.action_type))
+
+                if is_a_noop_action:
                     log.debug("Already took this action and there was no "
                               "change in the scenario state, not allowing "
                               "{} action".format(a.action_type))
@@ -237,7 +257,8 @@ def run_action_based_chat_system(interface,
             scenario_complete = current_state.scenario_complete
 
             if scenario_complete:
-                completed_scenarios.add(scenario.id())
+                log.info("Final state unstructured: {}".format(
+                    current_state.unstructured))
 
         if alignment_target is not None:
             session_alignment = interface.get_session_alignment(
