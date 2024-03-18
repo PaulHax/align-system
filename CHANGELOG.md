@@ -3,6 +3,26 @@
 This changelog follows the specifications detailed in: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html), although we have not yet reached a `1.0.0` release.
 
+## 0.3.1
+
+### Added
+
+* Added new Random ADM (action based; chooses random action and action parameters)
+* Added additional metrics evaluation candidate ADM configs
+* Added logging for final scenario state (alignment scores are provided there in the unstructured field)
+
+### Changed
+
+* Changed the TA3ActionBased interface class to accept a list of scenario IDs to work through (rather than an individual scenario ID)
+* No longer restricting the SITREP action based on unvisited and conscious characters
+
+### Fixed
+
+* Fixed issue where Llama2SingleKDMAADM tagging selection could choose an invalid tag
+* Not allowing actions that require a character ID to be taken when no characters exist
+* Handling rare corner case where generic APPLY_TREATMENT action could be repeated forever
+* Fixed mentions of "continuation of care" in maximization prompts
+
 ## 0.3.0
 
 ### Added

@@ -170,62 +170,36 @@ run_simplified_align_system LocalFiles \
 
 ## Metrics Evaluation ADM Invocations
 
-### Aligned ADM for ADEPT scenarios
+### Baseline ADM
 
 ```
-run_action_based_align_system TA3ActionBased \
+run_align_system TA3ActionBased \
+           --adm-config adm_configs/metrics-evaluation/delivered/single_kdma_adm_baseline.yml \
+           --username kitware-single-kdma-adm-baseline \
+           --session-type eval \
+           --api_endpoint "http://127.0.0.1:8080" # URL for TA3 Server
+```
+
+### Aligned ADM 1 (Single KDMA ADM No Negatives)
+
+```
+run_align_system TA3ActionBased \
            --adm-config adm_configs/metrics-evaluation/delivered/single_kdma_adm_adept.yml \
-           --username single_kdma_aligned_adm_adept \
+           --username kitware-single-kdma-adm-aligned-no-negatives \
            --align-to-target \
-           --session-type adept
+           --session-type eval \
+           --api_endpoint "http://127.0.0.1:8080" # URL for TA3 Server
 ```
 
-### Aligned Hybrid Kaleido ADM for ADEPT scenarios
+### Aligned ADM 2 (Hybrid Kaleido ADM)
 
 ```
-run_action_based_align_system TA3ActionBased \
+run_align_system TA3ActionBased \
            --adm-config adm_configs/metrics-evaluation/delivered/hybrid_kaleido.yml \
-           --username hybrid_kaleido_aligned_adm_adept \
+           --username kitware-hybrid-kaleido-aligned \
            --align-to-target \
-           --session-type adept
-```
-
-### Baseline ADM for ADEPT scenarios
-
-```
-run_action_based_align_system TA3ActionBased \
-           --adm-config adm_configs/metrics-evaluation/delivered/single_kdma_adm_baseline.yml \
-           --username single_kdma_baseline_adm_adept \
-           --session-type adept
-```
-
-### Aligned ADM for SoarTech scenarios
-
-```
-run_action_based_align_system TA3ActionBased \
-           --adm-config adm_configs/metrics-evaluation/delivered/single_kdma_adm_soartech.yml \
-           --username single_kdma_aligned_adm_soartech \
-           --align-to-target \
-           --session-type soartech
-```
-
-### Aligned Hybrid Kaleido ADM for SoarTech scenarios
-
-```
-run_action_based_align_system TA3ActionBased \
-           --adm-config adm_configs/metrics-evaluation/delivered/hybrid_kaleido.yml \
-           --username hybrid_kaleido_aligned_adm_soartech \
-           --align-to-target \
-           --session-type soartech
-```
-
-### Baseline ADM for SoarTech scenarios
-
-```
-run_action_based_align_system TA3ActionBased \
-           --adm-config adm_configs/metrics-evaluation/delivered/single_kdma_adm_baseline.yml \
-           --username single_kdma_baseline_adm_soartech \
-           --session-type soartech
+           --session-type eval \
+           --api_endpoint "http://127.0.0.1:8080" # URL for TA3 Server
 ```
 
 
