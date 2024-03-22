@@ -296,4 +296,7 @@ class KaleidoADM(AlignedDecisionMaker, ActionBasedADM):
             choices_unstructured,
             distance_fn=kwargs.get('distance_fn', DefaultDistanceFunction))
 
-        return available_actions[selected_choice_idx]
+        action_to_take = available_actions[selected_choice_idx]
+        action_to_take.justification = kaleido_results.loc[selected_choice_idx, :].explanation
+
+        return action_to_take

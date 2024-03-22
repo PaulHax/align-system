@@ -252,7 +252,12 @@ def run_action_based_chat_system(interface,
             if state_has_changed:
                 noop_actions = []
             else:
-                noop_actions.append(action_to_take)
+                # Strip out the justification string (provided by our
+                # ADMs) from no-op actions so that it can be compared
+                # to the original actions
+                _tmp_action_to_take = deepcopy(action_to_take)
+                _tmp_action_to_take.justification = None
+                noop_actions.append(_tmp_action_to_take)
 
             scenario_complete = current_state.scenario_complete
 

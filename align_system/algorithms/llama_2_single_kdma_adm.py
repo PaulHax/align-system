@@ -873,6 +873,7 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
             **kwargs)
 
         action_to_take = available_actions[response['choice']]
+        action_to_take.justification = response['info'].get('reasoning')
 
         if action_to_take.action_type == ActionTypeEnum.APPLY_TREATMENT:
             # If the additional required fields are already populated
