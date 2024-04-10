@@ -954,7 +954,11 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
                 raw_treatment_response, ['Reasoning', 'Answer', 'Location'])  # noqa
 
             if parsed_treatment_output is not None:
-                treatment_idx = parsed_treatment_output['Answer']
+                try:
+                    treatment_idx = int(parsed_treatment_output['Answer'])
+                except ValueError:
+                    log.warning('** Treatment index not an integer, retrying!')
+                    continue
 
                 if len(available_supplies) <= treatment_idx:
                     log.info('** Selected treatment_idx out of range of '
