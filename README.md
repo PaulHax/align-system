@@ -29,7 +29,7 @@ provides alignment scores for answered probes and scenarios.
 #### ADEPT's TA1 API
 
 ADEPT's TA1 service code can be found at: [ADEPT's TA1
-API](https://gitlab.com/itm-ta1-adept-shared/mvp1/adept-api-mvp1).
+API](https://gitlab.com/itm-ta1-adept-shared/adept_server).
 This API provides alignment scores for answered probes and scenarios.
 
 
