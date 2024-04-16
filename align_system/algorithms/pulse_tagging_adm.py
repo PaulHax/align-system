@@ -29,94 +29,43 @@ def convert_to_string(data):
     return "\n".join(result)
 
 class PulseTaggingADM(ChatLanguageModel, AlignedDecisionMaker):
-    
-    
-    def identify_tag_color(self, message):
-        chat_response = self.generate_responses(
-            dialogs=[[
-                {
-                    'role': 'system',
-                    'content': 'Format the user\'s message as a JSON object identifying the tag color. GREEN, YELLOW, RED, BLACK'
-                },
-                # black tag example
-                {
-                    'role': 'user',
-                    'content': 'Because the casualty is not breathing, they should be tagged as **EXPECTANT** (Black Triage Tag Color), indicating that they are unlikely to survive given the severity of injuries, level of available care, or both. Palliative care and pain relief should be provided.'
-                },
-                {
-                    'role': 'assistant',
-                    'content': '{"tag_color": "BLACK" }'
-                },
-                # green tag example
-                {
-                    'role': 'user',
-                    'content': 'They should be tagged GREEN'
-                },
-                {
-                    'role': 'assistant',
-                    'content': '{"tag_color": "GREEN" }'
-                },
-                # yellow tag example
-                {
-                    'role': 'user',
-                    'content': 'Due to the severity of the casualty\'s injuries, they should be tagged YELLOW'
-                },
-                {
-                    'role': 'assistant',
-                    'content': '{"tag_color": "YELLOW" }'
-                },
-                # red tag example
-                {
-                    'role': 'user',
-                    'content': 'The casualty is not breathing, but has a pulse. They should be tagged RED'
-                },
-                {
-                    'role': 'assistant',
-                    'content': '{"tag_color": "RED" }'
-                },
-                # actual example
-                {
-                    'role': 'user',
-                    'content': message
-                },
-                {
-                    'role': 'assistant',
-                    'content': '{"tag_color":'
-                }
-            ]]
-        )[0]
+
+
+    def identify_tag_color(self, chat_response):
+        # Limit parsing tags mentioned before conclusion
+        if '"Answer"' in chat_response:
+            chat_response = chat_response[chat_response.find('"Answer"'):]
+
         for i, color in enumerate(['GREEN', 'YELLOW', 'RED', 'BLACK']):
             if color in chat_response.upper():
                 return i
-            
+
         for i, color in enumerate(['MINOR', 'DELAYED', 'IMMEDIATE', 'EXPECTANT']):
             if color in chat_response.upper():
                 return i
-        
+
         return -1
-    
+
     def __call__(self, sample, target_kdma_values, **kwargs):
         # The start_guide is a text formatting of the START guide flowchart
         # TODO move these strings to template filess
         start_guide = '''**START Adult Triage Guide for Tagging Casualties**
 
 1. **Initial Assessment: Ability to Walk**
-   - If the casualty is able to walk, they are tagged as **MINOR** (Green Triage Tag Color) and directed to secondary triage.
+   - If it is unknown whether the patient is able to walk proceed to the next check.
+   - If the patient is able to walk, they are tagged as **MINOR** (Green Triage Tag Color) and directed to secondary triage. Otherwise, proceed to the next check.
 
 2. **Spontaneous Breathing Check**
-   - If the casualty is not breathing even after the airway is positioned, they are tagged as **EXPECTANT** (Black Triage Tag Color), indicating they are unlikely to survive given the severity of injuries, level of available care, or both. Palliative care and pain relief should be provided.
-   - If the casualty resumes spontaneous breathing after positioning the airway, proceed to the next check.
+   - If the patient is breathing after the airway is positioned, move to the next step. Otherwise, tag them as *EXPECTANT** (Black Triage Tag Color).
 
 3. **Respiratory Rate Check**
-   - If the respiratory rate is greater than or equal to 30 breaths per minute, tag the casualty as **IMMEDIATE** (Red Triage Tag Color), indicating the need for immediate intervention and transport.
+   - If the respiratory rate is greater than or equal to 30 breaths per minute, tag the casualty as **IMMEDIATE** (Red Triage Tag Color). Otherwise, proceed to the next check.
 
 4. **Perfusion Check**
-   - Assess the radial pulse or capillary refill time. If the radial pulse is absent or capillary refill time is greater than 2 seconds, tag the casualty as **IMMEDIATE**.
-   - If the radial pulse is present or capillary refill time is less than 2 seconds, proceed to the next check.
+   - Assess the radial pulse or capillary refill time. If the radial pulse is absent or capillary refill time is greater than 2 seconds, tag the casualty as **IMMEDIATE** (Red Triage Tag Color). Otherwise, proceed to the next check.
 
 5. **Mental Status Check**
-   - If the casualty does not obey commands, tag them as **IMMEDIATE**.
-   - If the casualty obeys commands, tag them as **DELAYED** (Yellow Triage Tag Color), indicating that their transport can be delayed and they have serious but potentially not life-threatening injuries, and are not expected to deteriorate significantly over several hours.
+   - If the patient does not obey commands, tag them as **IMMEDIATE** (Red Triage Tag Color). Otherwise, tag them as **DELAYED** (Yellow Triage Tag Color).
 
 **Additional Information on Triage Categories:**
 - **EXPECTANT:** Victim unlikely to survive. Provide palliative care.
@@ -128,23 +77,7 @@ class PulseTaggingADM(ChatLanguageModel, AlignedDecisionMaker):
 
 1. Initial Assessment: Ability to Walk
 
-The patient is able to walk, so they can be tagged as MINOR (Green).
-
-2. Spontaneous Breathing Check
-
-The patient is able to walk, so they can be tagged as MINOR (Green).
-
-3. Respiratory Rate Check
-
-The patient is able to walk, so they can be tagged as MINOR (Green).
-
-4. Perfusion Check
-
-The patient is able to walk, so they can be tagged as MINOR (Green).
-
-5. Mental Status Check
-
-The patient is able to walk, so they can be tagged as MINOR (Green).
+The patient is able to walk, so they can be tagged as MINOR (Green). It is not neccessary to perform the other checks.
 
 Conclusion: Tag the casualty as MINOR (Green).'''
 
@@ -156,19 +89,19 @@ It is unclear if the patient is able to walk, so I will move on to the next chec
 
 2. Spontaneous Breathing Check
 
-The patient is breathing normally, so they so they should not be tagged as EXPECTANT (Black).
+The patient is breathing, so I will proceed to the next check.
 
 3. Respiratory Rate Check
 
-The patient is breathing normally, which is less than 30 breaths per minute, so I don't need to tag them as IMMEDIATE (Red) just yet.
+The patient is breathing normally, which is less than 30 breaths per minute, so I should proceed to the next check.
 
 4. Perfusion Check
 
-The patient's pulse is within the normal range, so they will either be tagged RED or YELLOW depending on the Mental Status Check.
+The patient's pulse is within the normal range, so I will move to next check.
 
 5. Mental Status Check
 
-The casualty follows basic commands, so they should be tagged as DELAYED (Yellow)
+The casualty follows basic commands, so they should be tagged as DELAYED (Yellow).
 
 Conclusion: Tag the casualty as DELAYED (Yellow)'''
 
@@ -176,23 +109,19 @@ Conclusion: Tag the casualty as DELAYED (Yellow)'''
 
 1. Initial Assessment: Ability to Walk
 
-The patient is not able to walk so they cannot be tagged as MINOR (Green).
+The patient is not able to walk, so I will move on to the next check.
 
 2. Spontaneous Breathing Check
 
-The patient is breathing normally so they cannot be tagged as EXPECTANT (Black).
+The patient is breathing, so I should move to the next check.
 
 3. Respiratory Rate Check
 
-The patient's respiratory rate is not faster than 30 breaths per minute, so it is possible they should be tagged YELLOW.
+The patient is breathing, but their respiratory rate is not faster than 30 breaths per minute, so I must proceed to the next check to get more information.
 
 4. Perfusion Check
 
-The patient's pulse is abnormally high and capillary refill time is more than 3 seconds, so they do not pass this check which means they should be tagged as IMMEDIATE (Red).
-
-5. Mental Status Check
-
-The patient is not able to follow basic commands, so they do not pass this check.
+The patient's pulse is abnormally high and capillary refill time is more than 3 seconds, so they should be tagged as IMMEDIATE (Red). I've determined the appropriate tag color, so I don't need to perform the next check.
 
 Conclusion: Tag the casualty as IMMEDIATE (Red)'''
 
@@ -200,23 +129,11 @@ Conclusion: Tag the casualty as IMMEDIATE (Red)'''
 
 1. Initial Assessment: Ability to Walk
 
-The patient is unconscious and not able to walk, so they should not be tagged as MINOR (Green).
+The patient is unconscious and not able to walk, so I must continue on to the next check.
 
 2. Spontaneous Breathing Check
 
-The patient is not breathing, so they do not pass this check.
-
-3. Respiratory Rate Check
-
-The patient is not breathing, so they do not pass this check.
-
-4. Perfusion Check
-
-The patient has no radial pulse and capillary refill time is more than 3 seconds, so they do not pass this check.
-
-5. Mental Status Check
-
-The patient is unconscious and not able to follow basic commands, so they do not pass this check.
+The patient is not breathing so this patient should be tagged as EXPECTANT (Black). No further checks are needed to determine how this patient should be tagged.
 
 Conclusion: Tag the casualty as EXPECTANT (Black)'''
 
@@ -251,11 +168,11 @@ Conclusion: Tag the casualty as EXPECTANT (Black)'''
             },
             {
                 'role': 'user',
-                'content': sample_3[0]
+                'content': sample_4[0]
             },
             {
                 'role': 'assistant',
-                'content': sample_3[1]
+                'content': sample_4[1]
             },
             {
                 'role': 'user',
@@ -266,14 +183,14 @@ Conclusion: Tag the casualty as EXPECTANT (Black)'''
                 'content': 'Let\'s apply the START guide'
             }
         ]]
-        
-        
-        
+
+
+
         n_samples = kwargs.get('n_samples', 1)  # Set the number of samples, default to 5 if not provided
 
         chat_responses = []  # List to store the generated responses
 
-        
+
         chat_responses = self.generate_responses(dialogs * n_samples)
             # chat_responses.append(response)
 
