@@ -3,13 +3,24 @@
 This changelog follows the specifications detailed in: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html), although we have not yet reached a `1.0.0` release.
 
-## Unreleased
+## 0.3.3
 
 ### Changed
 
 * Modified the prompt for PulseTaggingADM. Also removed duplicated inference call within `identify_tag_color`
   method. Additionally, removed duplicated RED tag in-context example and replaced with missing BLACK tag
   example.
+* Changed default maximization prompt for Kaleido
+
+### Fixed
+
+* Applied attention fixes for Kaliedo provided by UWash
+* Fixed an "other choice" ordering issue in Kaleido ADM
+
+### Added
+
+* Added an additional parsing guard in Llama2SinglaKDMAADM
+* Added do_sample as an init kwarg for Llama2SinglaKDMAADM (set to False for temperature 0)
 
 ## 0.3.2
 

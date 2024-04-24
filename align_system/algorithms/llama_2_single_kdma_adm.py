@@ -109,10 +109,11 @@ TAGGING_MULTIPLE_CHOICE_JSON_FORMAT = "{\"Reasoning\": \"<Provide a reasoned exp
 
 class Llama2SingleKDMAADM(AlignedDecisionMaker):
 
-    def __init__(self, device='cuda', hf_model='meta-llama/Llama-2-7b-chat-hf', precision='full', temperature=0.7, **kwargs):
+    def __init__(self, device='cuda', hf_model='meta-llama/Llama-2-7b-chat-hf', precision='full', temperature=0.7, do_sample=True, **kwargs):
         self.device = device
         self.hf_model = hf_model
         self.temperature = temperature
+        self.do_sample = do_sample
         self.chat_template = kwargs.get('chat_template', None)
 
         assert precision in ['full', 'half'], "precision must be either 'full' or 'half'."
@@ -297,7 +298,13 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
         if self.device != 'auto':
             prompt_tokens = prompt_tokens.to(self.device)
 
-        outputs = self.model.generate(prompt_tokens, return_dict_in_generate=True, output_scores=True, max_new_tokens=512, temperature=self.temperature, do_sample=True)
+        outputs = self.model.generate(
+            prompt_tokens,
+            return_dict_in_generate=True,
+            output_scores=True,
+            max_new_tokens=512,
+            temperature=self.temperature,
+            do_sample=self.do_sample)
 
         # Print the generated model output
         generated_output = self.tokenizer.decode(outputs.sequences[0][prompt_length:])
@@ -347,8 +354,8 @@ class Llama2SingleKDMAADM(AlignedDecisionMaker):
             return_dict_in_generate=True,
             output_scores=True,
             max_new_tokens=512,
-            temperature=self.temperature
-        )
+            temperature=self.temperature,
+            do_sample=self.do_sample)
 
         # Split the sequences based on prompt lengths
         split_outputs = torch.split(outputs.sequences, 1, dim=0)
