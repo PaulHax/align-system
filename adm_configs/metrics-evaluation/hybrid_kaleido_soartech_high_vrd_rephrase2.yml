@@ -21,7 +21,7 @@ adm:
     answer_attempts: 5
 
 alignment_target_override:
-  id: maximization_low
+  id: maximization_high
   kdma_values:
     - kdma: maximization
-      value: 0.1
+      value: 0.9

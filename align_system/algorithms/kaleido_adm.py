@@ -102,7 +102,7 @@ class KaleidoADM(AlignedDecisionMaker, ActionBasedADM):
 
         rows = []
         for choice in choices:
-            other_choices_str = ', '.join(['"{}"'.format(c) for c in (set(choices) - {choice})])
+            other_choices_str = ', '.join(['"{}"'.format(c) for c in choices if c != choice])
             choice_prompt = format_template(
                 prompt_template,
                 allow_extraneous=True,
