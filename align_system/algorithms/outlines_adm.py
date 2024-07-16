@@ -270,9 +270,15 @@ class OutlinesTransformersADM(ActionBasedADM):
             if "incontext" in kwargs and kwargs["incontext"]["number"] > 0:
                 n_icl_examples = kwargs["incontext"]["number"]
 
-                # Read dataset
-                with open(kwargs["incontext"]["dataset"]) as f:
-                    icl_dataset = json.load(f)
+                # Read dataset(s)
+                icl_datasets = {}
+                for dset_kdma, dset in kwargs["incontext"]["datasets"].items():
+                    with open(dset) as f:
+                        icl_datasets[dset_kdma] = json.load(f)
+
+                if kdma not in icl_datasets:
+                    raise RuntimeError(f"No incontext samples for targeted kdma: {kdma}")
+                icl_dataset = icl_datasets[kdma]
                 if len(icl_dataset) < n_icl_examples:
                     raise RuntimeError(f"Not enough possible incontext samples to learn from. Only "
                                        f"{len(icl_dataset)} samples available while asking for "

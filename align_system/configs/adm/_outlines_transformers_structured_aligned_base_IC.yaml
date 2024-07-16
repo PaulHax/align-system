@@ -5,4 +5,4 @@ inference_kwargs:
   incontext:
       number: 5
       method: bert_similarity
-      dataset: ???
+      datasets: ???
