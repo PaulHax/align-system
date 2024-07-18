@@ -13,15 +13,7 @@ from swagger_client.models import (
     ActionTypeEnum,
     InjuryLocationEnum,
     CharacterTagEnum,
-    KDMAValue,
-    State,
-    Action,
-    Character,
-    Supplies,
-    Injury,
-    Environment,
-    DecisionEnvironment,
-    SimEnvironment
+    KDMAValue
 )
 
 from align_system.utils import logging
@@ -30,6 +22,7 @@ from align_system.utils.voting import (
     calculate_votes,
     filter_votes_to_responses,
 )
+from align_system.utils.hydrate_state import hydrate_scenario_state
 from align_system.algorithms.abstracts import ActionBasedADM
 from align_system.prompt_engineering.outlines_prompts import (
     baseline_system_prompt,
@@ -137,30 +130,6 @@ class OutlinesTransformersADM(ActionBasedADM):
                     choices.append(a.unstructured)
 
         return choices
-
-    @staticmethod
-    def hydrate_state(state_dict):
-        """
-        Hydrate sample into scenario state to format prompt
-        Duplicated from InputOutputFileInterface
-        """
-        # TODO: Refactor to remove duplication?
-        state = State(**state_dict['full_state'])
-        state.characters = [Character(**c) for c in state.characters]
-        for c in state.characters:
-            c.injuries = [Injury(**i) for i in c.injuries]
-        state.supplies = [Supplies(**s) for s in state.supplies]
-        state.environment = Environment(**state.environment)
-        state.environment.decision_environment = DecisionEnvironment(
-            **state.environment.decision_environment)
-        state.environment.sim_environment = SimEnvironment(
-            **state.environment.sim_environment)
-
-        actions = [Action(**a) for a in state_dict['choices']]
-        for a in actions:
-            a.justification = None
-
-        return state, actions
 
     def _state_to_top_level_prompt(self, scenario_state, actions):
         """
@@ -287,7 +256,7 @@ class OutlinesTransformersADM(ActionBasedADM):
                 # Populate possible samples from the dataset
                 possible_icl_examples = []
                 for sample in icl_dataset:
-                    state, actions = self.__class__.hydrate_state(sample["input"])
+                    state, actions = hydrate_scenario_state(sample["input"])
                     possible_icl_examples.append({
                         "state": state,
                         "actions": actions,

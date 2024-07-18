@@ -1,8 +1,0 @@
-defaults:
-  - outlines_transformers_structured_aligned
-
-inference_kwargs:
-  incontext:
-      number: 5
-      method: bert_similarity
-      datasets: ???
