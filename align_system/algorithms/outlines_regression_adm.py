@@ -37,25 +37,6 @@ KDMA_DESCRIPTIONS_FILE_PATH = os.path.join(
     'prompt_engineering/kdma_descriptions.yml')
 
 
-# Function borrowed from
-# https://docs.python.org/3/library/itertools.html#itertools.batched
-# (since itertools.batched is only available in Python 3.12 or newer):
-def batched(iterable, n):
-    # batched('ABCDEFG', 3) --> ABC DEF G
-    if n < 1:
-        raise ValueError('n must be at least one')
-    iterator = iter(iterable)
-    while batch := tuple(itertools.islice(iterator, n)):
-        yield batch
-
-
-def run_in_batches(inference_function, inputs, batch_size):
-    ''' Batch inference to avoid out of memory error'''
-    outputs = []
-    for batch in batched(inputs, batch_size):
-        outputs.extend(inference_function(list(batch)))
-    return outputs
-
 class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
     def __init__(self,
                  model_name,
@@ -111,7 +92,7 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
         log.info(outcome_dialog_texts[0])
 
         # List of {predicted_outcomes:} with length = num_samples * len(choices)
-        predicted_outcomes = run_in_batches(outcome_generator, outcome_dialog_texts, batch_size)
+        predicted_outcomes = self.run_in_batches(outcome_generator, outcome_dialog_texts, batch_size)
         # Reshape to matrix of num_samples x len(choices)
         predicted_outcomes = [predicted_outcomes[i:i+len(choices)] for i in range(0,len(predicted_outcomes),len(choices))]
 
@@ -170,7 +151,7 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
         log.info(kdma_dialog_texts[0])
 
         # List of {score:int, reasoning:str} with length = num_samples*len(choices)*len(target_kdmas)
-        kdma_score_responses = run_in_batches(kdma_score_generator, kdma_dialog_texts, batch_size)
+        kdma_score_responses = self.run_in_batches(kdma_score_generator, kdma_dialog_texts, batch_size)
         # # Reshape to matrix of num_samples x (len(choices)*len(target_kdmas))
         # sample_size = len(choices)*len(target_kdmas)
         # kdma_score_responses = [kdma_score_responses[i:i+sample_size] for i in range(0,len(kdma_score_responses),sample_size)]
@@ -261,28 +242,11 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
         # Important that the choices stay in the same order as the
         # available actions as we'll use the selected index later to
         # map to the corresponding action
-        choices = [a.unstructured for a in available_actions]
-
-        if len(set(choices)) != len(choices):
-            log.warning("Unstructured text for available actions is not "
-                        "unique, appending action parameters to choices")
-
-            character_id_to_name = {c.id: c.name for c in scenario_state.characters}
-            # Important that the choices stay in the same order as the
-            # available actions as we'll use the selected index later to
-            # map to the corresponding action
-            choices = []
-            for a in available_actions:
-                if(a.action_type == ActionTypeEnum.APPLY_TREATMENT
-                   and a.parameters is not None and len(a.parameters) > 0):
-                    choices.append(detailed_unstructured_treatment_action_text(a, character_id_to_name))
-                elif(a.action_type == ActionTypeEnum.TAG_CHARACTER
-                     and a.parameters is not None and len(a.parameters) > 0):
-                    choices.append(detailed_unstructured_tagging_action_text(a, character_id_to_name))
-                else:
-                    # Not covering every possible case here, may need
-                    # to add more dedicated detailed prompts
-                    choices.append(a.unstructured)
+        choices = self.format_choices(
+            [a.unstructured for a in available_actions],
+            available_actions,
+            scenario_state
+        )
 
         target_kdmas = alignment_target.kdma_values
 

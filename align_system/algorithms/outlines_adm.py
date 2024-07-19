@@ -103,8 +103,8 @@ class OutlinesTransformersADM(ActionBasedADM):
         else:
             return None
 
-    @staticmethod
-    def format_choices(choices, available_actions, scenario_state):
+    @classmethod
+    def format_choices(cls, choices, available_actions, scenario_state):
         """
         If choices are not unique, format choices to include state information.
         """
@@ -135,7 +135,7 @@ class OutlinesTransformersADM(ActionBasedADM):
         """
         Generate prompt dialog based on given state and actions
         """
-        choices = self.__class__.format_choices(
+        choices = self.format_choices(
             [a.unstructured for a in actions],
             actions,
             scenario_state
@@ -186,6 +186,26 @@ class OutlinesTransformersADM(ActionBasedADM):
             {"role": "assistant", "content": answer}
         ]
 
+    # Function borrowed from
+    # https://docs.python.org/3/library/itertools.html#itertools.batched
+    # (since itertools.batched is only available in Python 3.12 or newer):
+    @classmethod
+    def batched(cls, iterable, n):
+        # batched('ABCDEFG', 3) --> ABC DEF G
+        if n < 1:
+            raise ValueError('n must be at least one')
+        iterator = iter(iterable)
+        while batch := tuple(itertools.islice(iterator, n)):
+            yield batch
+
+    @classmethod
+    def run_in_batches(cls, inference_function, inputs, batch_size):
+        ''' Batch inference to avoid out of memory error'''
+        outputs = []
+        for batch in cls.batched(inputs, batch_size):
+            outputs.extend(inference_function(list(batch)))
+        return outputs
+
     def top_level_choose_action(self,
                                 scenario_state,
                                 available_actions,
@@ -193,6 +213,7 @@ class OutlinesTransformersADM(ActionBasedADM):
                                 num_positive_samples=1,
                                 num_negative_samples=0,
                                 shuffle_choices=False,
+                                generator_batch_size=5,
                                 **kwargs):
         if self.baseline and num_negative_samples > 0:
             raise RuntimeError("No notion of negative samples for baseline run")
@@ -203,7 +224,7 @@ class OutlinesTransformersADM(ActionBasedADM):
         # Important that the choices stay in the same order as the
         # available actions as we'll use the selected index later to
         # map to the corresponding action
-        choices = self.__class__.format_choices(
+        choices = self.format_choices(
             [a.unstructured for a in available_actions],
             available_actions,
             scenario_state
@@ -340,7 +361,7 @@ class OutlinesTransformersADM(ActionBasedADM):
                  extra={"markup": True})
         log.info(dialog_texts[0])
 
-        responses = generator(dialog_texts)
+        responses = self.run_in_batches(generator, dialog_texts, generator_batch_size)
 
         if len(dialog_texts) == 1:
             # Ensure responses is a list in the case that we passed a
