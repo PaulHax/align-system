@@ -33,6 +33,18 @@ from align_system.prompt_engineering.outlines_prompts import (
 log = logging.getLogger(__name__)
 JSON_HIGHLIGHTER = JSONHighlighter()
 
+<<<<<<< HEAD
+=======
+# TODO - make this configurable
+KDMA_DESCRIPTIONS_FILE_PATH = os.path.join(
+    pathlib.Path(__file__).parent.absolute(), '..',
+    'prompt_engineering/kdma_descriptions.yml')
+
+KDMA_NAME_MAP = {"moral deservingness":"MoralDesert",
+                "maximization": "maximization"
+                }
+
+>>>>>>> f8d4c66 (Name mapping fix for MoralDesert)
 
 class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
     def __init__(self,
@@ -202,7 +214,7 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
                             selected_icl_examples = random.sample(possible_icl_examples, n_icl_examples)
                         elif icl_strategy == "bert_similarity":
                             # TODO: Include outcome prediction for ICL examples?
-                            no_outcome_prompt = kdma_score_prediction_prompt(scenario_description, choice, None, target_kdma_name)
+                            no_outcome_prompt = kdma_score_prediction_prompt(scenario_description, choice, None, target_kdma['name'])
 
                             possible_icl_prompts = [icl_sample["prompt"] for icl_sample in possible_icl_examples]
 
@@ -221,7 +233,7 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
                                 self._format_single_incontext_prompt(icl_sample["prompt"], target_kdma_name, icl_sample["expected_value"])
                             )
 
-                    predict_kdma_prompt = kdma_score_prediction_prompt(scenario_description, choice, outcome, target_kdma_name)
+                    predict_kdma_prompt = kdma_score_prediction_prompt(scenario_description, choice, outcome, target_kdma['name'])
                     dialog = [{'role': 'system', 'content': kdma_score_sys_prompt}]
                     dialog.extend(icl_examples)
                     dialog.append({'role': 'user', 'content': predict_kdma_prompt})
