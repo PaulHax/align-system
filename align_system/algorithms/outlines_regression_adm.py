@@ -117,21 +117,26 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
         cot_reasoning = ""
         # Moral derivngess or moral judgement
         if target_kdma['kdma'] == 'MoralDesert' or 'Moral judgement':
-            if hasattr(action, 'character_id'):
+            if hasattr(action, 'character_id') and action.character_id is not None:
                 # get character associated with action
+                action_character = None
                 for character in state.characters:
                     if character.id == action.character_id:
                         action_character = character
-                # add intent to reasoning
-                if action_character.intent is None or action_character.intent == 'no intent':
-                    cot_reasoning += f"Because {action_character.name} acted with no intent"
+                        break
+                if action_character is not None:
+                    # add intent to reasoning
+                    if not hasattr(action_character, 'intent') or action_character.intent is None or action_character.intent == 'no intent':
+                        cot_reasoning += f"Because {action_character.name} acted with no intent"
+                    else:
+                        cot_reasoning += f"Because {action_character.name} acted to {action_character.intent}"
+                    # add directness of causality to reasoning
+                    if not hasattr(action_character, 'directness_of_causality') or action_character.directness_of_causality is None or action_character.directness_of_causality == 'none':
+                         cot_reasoning += f" and did not cause of harm, choosing "
+                    else:
+                        cot_reasoning += f" and had a {action_character.directness_of_causality} cause of harm, choosing "
                 else:
-                    cot_reasoning += f"Because {action_character.name} acted to {action_character.intent}"
-                # add directness of causality to reasoning
-                if action_character.directness_of_causality is None or action_character.directness_of_causality == 'none':
-                     cot_reasoning += f" and did not cause of harm, choosing "
-                else:
-                    cot_reasoning += f" and had a {action_character.directness_of_causality} cause of harm, choosing "
+                    raise RuntimeError(f"Character not found in state: {action.character_id}")
         else:
             cot_reasoning = f"Choosing "
         cot_reasoning += f"{choice} would score a {expected_value} for the the principle of {target_kdma['name']}."
