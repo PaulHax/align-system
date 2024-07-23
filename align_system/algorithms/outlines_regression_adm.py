@@ -114,20 +114,27 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
     def get_chain_of_thought_reasoning(self, target_kdma, action, state, choice, label):
         # Predicted scores are 0-10, KDMA values are 0-1
         expected_value = int(label * 10)
-        cot_reasoning = ''
-        if target_kdma['kdma'] == 'MoralDesert':
-            # Example: Patient A aims to intend major harm. Patient B has no intent. 
-            #          Thus choosing Treat Patient B scores a 10 for the the principle of moral deservingness.
-            for character in state.characters:
-            # if character.id == action.character_id:
-                if character.intent is None or character.intent == 'no intent':
-                    cot_reasoning += f"{character.name} has no intent. "
+        cot_reasoning = ""
+        # Moral derivngess or moral judgement
+        if target_kdma['kdma'] == 'MoralDesert' or 'Moral judgement':
+            if hasattr(action, 'character_id'):
+                # get character associated with action
+                for character in state.characters:
+                    if character.id == action.character_id:
+                        action_character = character
+                # add intent to reasoning
+                if action_character.intent is None or action_character.intent == 'no intent':
+                    cot_reasoning += f"Because {action_character.name} acted with no intent"
                 else:
-                   cot_reasoning += f"{character.name} aims to {character.intent}. "
-            cot_reasoning += f"Thus choosing "
+                    cot_reasoning += f"Because {action_character.name} acted to {action_character.intent}"
+                # add directness of causality to reasoning
+                if action_character.directness_of_causality is None or action_character.directness_of_causality == 'none':
+                     cot_reasoning += f" and did not cause of harm, choosing "
+                else:
+                    cot_reasoning += f" and had a {action_character.directness_of_causality} cause of harm, choosing "
         else:
             cot_reasoning = f"Choosing "
-        cot_reasoning += f"{choice} scores a {expected_value} for the the principle of {target_kdma['name']}."
+        cot_reasoning += f"{choice} would score a {expected_value} for the the principle of {target_kdma['name']}."
         return cot_reasoning
 
     def get_icl_datasets(self, incontext_settings, target_kdmas):
@@ -266,10 +273,6 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
 
         # List of {score:int, reasoning:str} with length = num_samples*len(choices)*len(target_kdmas)
         kdma_score_responses = self.run_in_batches(kdma_score_generator, kdma_dialog_texts, batch_size)
-        # # Reshape to matrix of num_samples x (len(choices)*len(target_kdmas))
-        # sample_size = len(choices)*len(target_kdmas)
-        # kdma_score_responses = [kdma_score_responses[i:i+sample_size] for i in range(0,len(kdma_score_responses),sample_size)]
-        # response_keys = [response_keys[i:i+sample_size] for i in range(0,len(response_keys),sample_size)]
 
         log.info("[bold]*KDMA SCORE PREDICTION RESPONSE*[/bold]",
                  extra={"markup": True})
