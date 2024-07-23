@@ -24,6 +24,7 @@ from align_system.prompt_engineering.outlines_prompts import (
     outcome_prediction_prompt,
     outcome_prediction_json_schema,
     kdma_score_prediction_system_prompt,
+    kdma_score_prediction_system_prompt_with_examples,
     kdma_score_prediction_prompt,
     kdma_score_prediction_json_schema,
     regression_alignment_system_prompt,
@@ -33,18 +34,6 @@ from align_system.prompt_engineering.outlines_prompts import (
 log = logging.getLogger(__name__)
 JSON_HIGHLIGHTER = JSONHighlighter()
 
-<<<<<<< HEAD
-=======
-# TODO - make this configurable
-KDMA_DESCRIPTIONS_FILE_PATH = os.path.join(
-    pathlib.Path(__file__).parent.absolute(), '..',
-    'prompt_engineering/kdma_descriptions.yml')
-
-KDMA_NAME_MAP = {"moral deservingness":"MoralDesert",
-                "maximization": "maximization"
-                }
-
->>>>>>> f8d4c66 (Name mapping fix for MoralDesert)
 
 class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
     def __init__(self,
@@ -81,7 +70,7 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
 
         for _ in range(num_samples):
             for choice in choices:
-                predict_outcome_prompt = outcome_prediction_prompt(scenario_description, choice)
+                predict_outcome_prompt = outcome_prediction_prompt(scenario_description, choices, choice)
                 outcome_dialogs.append([{'role': 'system', 'content': outcomes_sys_prompt},
                                         {'role': 'user', 'content': predict_outcome_prompt}])
 
@@ -166,7 +155,7 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
 
                     # TODO: Include outcome in ICL example?
                     icl_prompt = kdma_score_prediction_prompt(
-                        icl_scenario_description, icl_choice, None, dset_kdma
+                        icl_scenario_description, icl_choices, icl_choice, None, dset_kdma
                     )
 
                     icl_datasets[dset_kdma].append({
@@ -184,6 +173,7 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
                                       predicted_outcomes=None,
                                       num_samples=1,
                                       batch_size=6,
+                                      kdma_score_examples=False,
                                       incontext_settings={}):
         '''
         Samples predictions of kdma scores associated with each choice
@@ -204,7 +194,10 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
         for sample_idx in range(num_samples):
             # loop over target kdmas
             for target_kdma in target_kdmas:
-                kdma_score_sys_prompt = kdma_score_prediction_system_prompt(target_kdma['kdma'], target_kdma['description'])
+                if kdma_score_examples:
+                    kdma_score_sys_prompt = kdma_score_prediction_system_prompt_with_examples(target_kdma['name'], target_kdma['description'], target_kdma['score_examples'])
+                else:
+                    kdma_score_sys_prompt = kdma_score_prediction_system_prompt(target_kdma['name'], target_kdma['description'])
 
                 # loop over choices
                 for choice_idx in range(len(choices)):
@@ -230,7 +223,7 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
                             selected_icl_examples = random.sample(possible_icl_examples, n_icl_examples)
                         elif icl_strategy == "bert_similarity":
                             # TODO: Include outcome prediction for ICL examples?
-                            no_outcome_prompt = kdma_score_prediction_prompt(scenario_description, choice, None, target_kdma['name'])
+                            no_outcome_prompt = kdma_score_prediction_prompt(scenario_description, choices, choice, None, target_kdma['name'])
 
                             possible_icl_prompts = [icl_sample["prompt"] for icl_sample in possible_icl_examples]
 
@@ -249,7 +242,7 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
                                 self._format_single_incontext_prompt(icl_sample, target_kdma)
                             )
 
-                    predict_kdma_prompt = kdma_score_prediction_prompt(scenario_description, choice, outcome, target_kdma['name'])
+                    predict_kdma_prompt = kdma_score_prediction_prompt(scenario_description, choices, choice, outcome, target_kdma['name'])
                     dialog = [{'role': 'system', 'content': kdma_score_sys_prompt}]
                     dialog.extend(icl_examples)
                     dialog.append({'role': 'user', 'content': predict_kdma_prompt})
@@ -357,6 +350,7 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
                                 distribution_matching='average',
                                 generator_batch_size=5,
                                 kdma_descriptions_map='align_system/prompt_engineering/kdma_descriptions.yml',
+                                kdma_score_examples=False,
                                 **kwargs):
 
         scenario_description = scenario_state_description_1(scenario_state)
@@ -388,6 +382,7 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
             else:
                 target_kdmas[kdma_idx]['name'] = kdma_descriptions[kdma]['name']
                 target_kdmas[kdma_idx]['description'] = kdma_descriptions[kdma]['description']
+                target_kdmas[kdma_idx]['score_examples'] = kdma_descriptions[kdma]['score_examples']
 
         predicted_kdma_values = {}      # Dictionary to save output for each choice to
         for choice in choices:
@@ -415,6 +410,7 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
         kdma_score_responses, response_keys = self.sample_kdma_score_predictions(scenario_description, choices, \
                                                                                 target_kdmas, predicted_outcomes, \
                                                                                 num_samples, generator_batch_size, \
+                                                                                kdma_score_examples, \
                                                                                 incontext_settings=kwargs.get("incontext", {}))
         # Save predictions
         for idx in range(len(kdma_score_responses)):
