@@ -111,25 +111,71 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
 
         return predicted_outcomes
 
-    def _format_single_incontext_prompt(self, prompt, target_kdma, expected_value):
+    def _format_single_incontext_prompt(self, icl_example, target_kdma):
         # Predicted scores are 0-10, KDMA values are 0-1
-        expected_value = int(expected_value * 10)
+        expected_value = int(icl_example['expected_value'] * 10)
 
-        # TODO: Add chain of thought reasoning?
-        target_wording_mapping = {
-            "MoralDesert": "moral deservingness",
-            "maximization": "maximization"
-        }
-        reasoning_text = f"Per the principle of {target_wording_mapping.get(target_kdma, target_kdma)}, " \
-                         f"this response scores a {expected_value}"
-
-        # TODO: Validate against schema?
-        answer = f'{{"reasoning": "{reasoning_text}", "score": {expected_value}}}'
+        answer = f'{{"reasoning": "{icl_example['reasoning']}", "score": {expected_value}}}'
 
         return [
-            {"role": "user", "content": prompt},
+            {"role": "user", "content": icl_example['prompt']},
             {"role": "assistant", "content": answer}
         ]
+
+    def get_chain_of_thought_reasoning(self, target_kdma, action, state, choice, label):
+        # Predicted scores are 0-10, KDMA values are 0-1
+        expected_value = int(label * 10)
+        cot_reasoning = ''
+        if target_kdma['kdma'] == 'MoralDesert':
+            # Example: Patient A aims to intend major harm. Patient B has no intent. 
+            #          Thus choosing Treat Patient B scores a 10 for the the principle of moral deservingness.
+            for character in state.characters:
+            # if character.id == action.character_id:
+                if character.intent is None or character.intent == 'no intent':
+                    cot_reasoning += f"{character.name} has no intent. "
+                else:
+                   cot_reasoning += f"{character.name} aims to {character.intent}. "
+            cot_reasoning += f"Thus choosing "
+        else:
+            cot_reasoning = f"Choosing "
+        cot_reasoning += f"{choice} scores a {expected_value} for the the principle of {target_kdma['name']}."
+        return cot_reasoning
+
+    def get_icl_datasets(self, incontext_settings, target_kdmas):
+        icl_datasets = {}
+        # Read dataset(s)
+        for target_kdma in target_kdmas:
+            dset_kdma = target_kdma['kdma']
+            dset_f = incontext_settings["datasets"][dset_kdma]
+            with open(dset_f) as f:
+                dset = json.load(f)
+
+            icl_datasets[dset_kdma] = []
+            for icl_sample in dset:
+                state, actions = hydrate_scenario_state(icl_sample["input"])
+                icl_choices = self.format_choices(
+                    [a.unstructured for a in actions],
+                    actions,
+                    state
+                )
+                for action, icl_choice, label in zip(actions, icl_choices, icl_sample["label"]):
+                    if dset_kdma not in label:
+                        continue
+
+                    icl_scenario_description = scenario_state_description_1(state)
+
+                    # TODO: Include outcome in ICL example?
+                    icl_prompt = kdma_score_prediction_prompt(
+                        icl_scenario_description, icl_choice, None, dset_kdma
+                    )
+
+                    icl_datasets[dset_kdma].append({
+                        "prompt": icl_prompt,
+                        "expected_value": label[dset_kdma],
+                        "reasoning": self.get_chain_of_thought_reasoning(target_kdma, action, state, icl_choice, label[dset_kdma])
+                    })
+        return icl_datasets
+
 
     def sample_kdma_score_predictions(self,
                                       scenario_description,
@@ -150,35 +196,7 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
         if "number" in incontext_settings and incontext_settings["number"] > 0:
             use_icl = True
             n_icl_examples = incontext_settings["number"]
-
-            # Read dataset(s)
-            for dset_kdma, dset_f in incontext_settings["datasets"].items():
-                with open(dset_f) as f:
-                    dset = json.load(f)
-
-                icl_datasets[dset_kdma] = []
-                for icl_sample in dset:
-                    state, actions = hydrate_scenario_state(icl_sample["input"])
-                    icl_choices = self.format_choices(
-                        [a.unstructured for a in actions],
-                        actions,
-                        state
-                    )
-                    for icl_choice, label in zip(icl_choices, icl_sample["label"]):
-                        if dset_kdma not in label:
-                            continue
-
-                        icl_scenario_description = scenario_state_description_1(state)
-
-                        # TODO: Include outcome in ICL example?
-                        icl_prompt = kdma_score_prediction_prompt(
-                            icl_scenario_description, icl_choice, None, dset_kdma
-                        )
-
-                        icl_datasets[dset_kdma].append({
-                            "prompt": icl_prompt,
-                            "expected_value": label[dset_kdma],
-                        })
+            icl_datasets = self.get_icl_datasets(incontext_settings, target_kdmas)
 
         kdma_dialogs = []
         response_keys = []
@@ -186,9 +204,7 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
         for sample_idx in range(num_samples):
             # loop over target kdmas
             for target_kdma in target_kdmas:
-                kdma_sys_name = target_kdma['kdma']
-                target_kdma_name = target_kdma['name']
-                kdma_score_sys_prompt = kdma_score_prediction_system_prompt(target_kdma_name, target_kdma['description'])
+                kdma_score_sys_prompt = kdma_score_prediction_system_prompt(target_kdma['kdma'], target_kdma['description'])
 
                 # loop over choices
                 for choice_idx in range(len(choices)):
@@ -200,9 +216,9 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
 
                     icl_examples = []
                     if use_icl:
-                        if kdma_sys_name not in icl_datasets:
-                            raise RuntimeError(f"No incontext samples for targeted kdma: {kdma_sys_name}")
-                        possible_icl_examples = icl_datasets[kdma_sys_name]
+                        if target_kdma['kdma'] not in icl_datasets:
+                            raise RuntimeError(f"No incontext samples for targeted kdma: {target_kdma['name']}")
+                        possible_icl_examples = icl_datasets[target_kdma['kdma']]
                         if len(possible_icl_examples) < n_icl_examples:
                             raise RuntimeError(f"Not enough possible incontext samples to learn from. Only "
                                             f"{len(possible_icl_examples)} samples available while asking for "
@@ -230,7 +246,7 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
 
                         for icl_sample in selected_icl_examples:
                             icl_examples.extend(
-                                self._format_single_incontext_prompt(icl_sample["prompt"], target_kdma_name, icl_sample["expected_value"])
+                                self._format_single_incontext_prompt(icl_sample, target_kdma)
                             )
 
                     predict_kdma_prompt = kdma_score_prediction_prompt(scenario_description, choice, outcome, target_kdma['name'])
