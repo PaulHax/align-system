@@ -3,6 +3,13 @@
 This changelog follows the specifications detailed in: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html), although we have not yet reached a `1.0.0` release.
 
+## Unreleased
+
+### Added
+
+* Added incontext learning option for Outlines-based structured ADM
+* Added incontext learning option for Outlines-based regression ADM
+
 ## 0.4.1
 
 ### Changed
@@ -30,7 +37,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * Added sampler parameter to outlines ADMs (example usage in `align_system/configs/experiment/examples/outlines_sampler.yaml`)
 * Added option (on by default) to outlines ADM to filter votes to positive options only, can disable on the command line with `+adm.inference_kwargs.filter_votes_to_positives=False`
 
-### Deprecated 
+### Deprecated
 * The algorithm `align_system/algorithms/chat_kdma_predicting_adm.py` has been replaced by `align_system/algorithms/outlines_regression_adm.py`
 * The functionality in `align_system/algorithms/lib/chat/` is no longer being used
 * Files `align_system/algorithms/lib/templates/` have been replaced by `align_system/prompt_engineering/`

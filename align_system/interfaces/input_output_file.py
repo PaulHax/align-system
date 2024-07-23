@@ -2,19 +2,10 @@ import argparse
 import json
 import math
 
-from swagger_client.models import (
-    State,
-    Action,
-    Character,
-    Supplies,
-    Injury,
-    Environment,
-    DecisionEnvironment,
-    SimEnvironment)
-
 from align_system.interfaces.abstracts import (
     Interface,
     ActionBasedScenarioInterface)
+from align_system.utils.hydrate_state import hydrate_scenario_state
 
 
 class InputOutputFileInterface(Interface):
@@ -31,30 +22,8 @@ class InputOutputFileInterface(Interface):
                 self.scenario_ids.append(scenario_id)
                 self.scenarios[scenario_id] = []
 
-            state = State(**record['input']['full_state'])
-            # For some reason this initialization from a dictionary
-            # doesn't recursively init; need to manually do it
-            state.characters = [Character(**c) for c in state.characters]
-            for c in state.characters:
-                c.injuries = [Injury(**i) for i in c.injuries]
-
-            state.supplies = [Supplies(**s) for s in state.supplies]
-
-            state.environment = Environment(**state.environment)
-            state.environment.decision_environment = DecisionEnvironment(
-                **state.environment.decision_environment)
-            state.environment.sim_environment = SimEnvironment(
-                **state.environment.sim_environment)
-
-            actions = [Action(**a) for a in record['input']['choices']]
-            # TODO: Fix this on the input-output generation side, need
-            # to make sure original choices aren't being modified by
-            # ADM; for now manually clearing the justification string
-            for a in actions:
-                a.justification = None
-
             self.scenarios[scenario_id].append(
-                (state, actions))
+                hydrate_scenario_state(record['input']))
 
         self.current_scenario_id = None
 

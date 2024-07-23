@@ -1,6 +1,9 @@
 import json
 import random
 import itertools
+import math
+import numpy as np
+import torch
 
 import outlines
 from outlines.samplers import MultinomialSampler
@@ -19,6 +22,7 @@ from align_system.utils.voting import (
     calculate_votes,
     filter_votes_to_responses,
 )
+from align_system.utils.hydrate_state import hydrate_scenario_state
 from align_system.algorithms.abstracts import ActionBasedADM
 from align_system.prompt_engineering.outlines_prompts import (
     baseline_system_prompt,
@@ -99,23 +103,11 @@ class OutlinesTransformersADM(ActionBasedADM):
         else:
             return None
 
-    def top_level_choose_action(self,
-                                scenario_state,
-                                available_actions,
-                                alignment_target,
-                                num_positive_samples=1,
-                                num_negative_samples=0,
-                                shuffle_choices=False,
-                                **kwargs):
-        if self.baseline and num_negative_samples > 0:
-            raise RuntimeError("No notion of negative samples for baseline run")
-
-        scenario_description = scenario_state_description_1(scenario_state)
-        # Important that the choices stay in the same order as the
-        # available actions as we'll use the selected index later to
-        # map to the corresponding action
-        choices = [a.unstructured for a in available_actions]
-
+    @classmethod
+    def format_choices(cls, choices, available_actions, scenario_state):
+        """
+        If choices are not unique, format choices to include state information.
+        """
         if len(set(choices)) != len(choices):
             log.warning("Unstructured text for available actions is not "
                         "unique, appending action parameters to choices")
@@ -137,6 +129,109 @@ class OutlinesTransformersADM(ActionBasedADM):
                     # to add more dedicated detailed prompts
                     choices.append(a.unstructured)
 
+        return choices
+
+    def _state_to_top_level_prompt(self, scenario_state, actions):
+        """
+        Generate prompt dialog based on given state and actions
+        """
+        choices = self.format_choices(
+            [a.unstructured for a in actions],
+            actions,
+            scenario_state
+        )
+
+        scenario_description = scenario_state_description_1(scenario_state)
+        prompt = action_selection_prompt(scenario_description, choices)
+
+        return prompt, choices
+
+
+    def _format_single_incontext_prompt(self, sample, tgt_kdma, tgt_kdma_value):
+        """
+        Generate dialog for a single incontext example given the target kdma and value
+        """
+        state = sample["state"]
+        actions = sample["actions"]
+        labels = sample["labels"]
+
+        prompt, choices = self._state_to_top_level_prompt(state, actions)
+
+        # Compute each choice's distance from the target
+        # If the target attribute is not in the scores, assign infinite distance
+        # TODO: Add other metrics for determining "best" answer?
+        dist_to_tgt = [
+            abs(score[tgt_kdma] - tgt_kdma_value) if tgt_kdma in score else float('inf')
+            for score in labels
+        ]
+        # TODO: If there are ties, this always returns the first choice, do we need to chose differently?
+        correct_answer_idx = np.argmin(dist_to_tgt)
+
+        # TODO: Should we shuffle ICL options?
+
+        # TODO: Add chain of thought reasoning?
+        target_wording_mapping = {
+            "MoralDesert": "moral deservingness",
+            "maximization": "maximization"
+        }
+        adjective = "low" if tgt_kdma_value < 0.5 else "high"
+        reasoning_text = f"Per the principle of {adjective} {target_wording_mapping.get(tgt_kdma, tgt_kdma)}, " \
+                         f'\\"{choices[correct_answer_idx]}\\" is the correct answer.'
+
+        # TODO: Validate against schema?
+        answer = f'{{"detailed_reasoning": "{reasoning_text}", "action_choice": "{choices[correct_answer_idx]}"}}'
+
+        return [
+            {"role": "user", "content": prompt},
+            {"role": "assistant", "content": answer}
+        ]
+
+    # Function borrowed from
+    # https://docs.python.org/3/library/itertools.html#itertools.batched
+    # (since itertools.batched is only available in Python 3.12 or newer):
+    @classmethod
+    def batched(cls, iterable, n):
+        # batched('ABCDEFG', 3) --> ABC DEF G
+        if n < 1:
+            raise ValueError('n must be at least one')
+        iterator = iter(iterable)
+        while batch := tuple(itertools.islice(iterator, n)):
+            yield batch
+
+    @classmethod
+    def run_in_batches(cls, inference_function, inputs, batch_size):
+        ''' Batch inference to avoid out of memory error'''
+        outputs = []
+        for batch in cls.batched(inputs, batch_size):
+            outputs.extend(inference_function(list(batch)))
+        return outputs
+
+    def top_level_choose_action(self,
+                                scenario_state,
+                                available_actions,
+                                alignment_target,
+                                num_positive_samples=1,
+                                num_negative_samples=0,
+                                shuffle_choices=False,
+                                generator_batch_size=5,
+                                **kwargs):
+        if self.baseline and num_negative_samples > 0:
+            raise RuntimeError("No notion of negative samples for baseline run")
+        if self.baseline and "incontext" in kwargs and kwargs["incontext"]["number"] > 0:
+            raise RuntimeError("No notion of incontext examples for baseline run")
+
+        scenario_description = scenario_state_description_1(scenario_state)
+        # Important that the choices stay in the same order as the
+        # available actions as we'll use the selected index later to
+        # map to the corresponding action
+        choices = self.format_choices(
+            [a.unstructured for a in available_actions],
+            available_actions,
+            scenario_state
+        )
+
+        positive_icl_examples = []
+        negative_icl_examples = []
         if not self.baseline and alignment_target is not None:
             kdma_values = alignment_target.kdma_values
 
@@ -161,18 +256,81 @@ class OutlinesTransformersADM(ActionBasedADM):
             if negative_system_prompt is None:
                 raise RuntimeError("Couldn't find system prompt for kdma: {}, and "
                                    "value: {}.".format(kdma, negative_value))
+
+            if "incontext" in kwargs and kwargs["incontext"]["number"] > 0:
+                n_icl_examples = kwargs["incontext"]["number"]
+
+                # Read dataset(s)
+                icl_datasets = {}
+                for dset_kdma, dset in kwargs["incontext"]["datasets"].items():
+                    with open(dset) as f:
+                        icl_datasets[dset_kdma] = json.load(f)
+
+                if kdma not in icl_datasets:
+                    raise RuntimeError(f"No incontext samples for targeted kdma: {kdma}")
+                icl_dataset = icl_datasets[kdma]
+                if len(icl_dataset) < n_icl_examples:
+                    raise RuntimeError(f"Not enough possible incontext samples to learn from. Only "
+                                       f"{len(icl_dataset)} samples available while asking for "
+                                       f"{n_icl_examples} incontext samples.")
+
+                # Populate possible samples from the dataset
+                possible_icl_examples = []
+                for sample in icl_dataset:
+                    state, actions = hydrate_scenario_state(sample["input"])
+                    possible_icl_examples.append({
+                        "state": state,
+                        "actions": actions,
+                        "labels": sample["label"]
+                    })
+
+                # Downselect to n_icl_examples via given method
+                icl_strategy = kwargs["incontext"]["method"]
+                if icl_strategy == "random":
+                    selected_icl_examples = random.sample(possible_icl_examples, n_icl_examples)
+                elif icl_strategy == "bert_similarity":
+                    # Only comparing similarity of prompts, not considering answer options at this time
+                    no_choices_prompt, _ = self._state_to_top_level_prompt(scenario_state, [])
+                    possible_icl_prompts = []
+                    for s in possible_icl_examples:
+                        prompt, _ = self._state_to_top_level_prompt(s["state"], [])
+                        possible_icl_prompts.append(prompt)
+
+                    # Create similarity scores between the ICL samples and find top-k indices
+                    from bert_score import score
+                    _, _, F1 = score([no_choices_prompt]*len(possible_icl_prompts), possible_icl_prompts, lang="en")
+                    _, indices = torch.topk(F1, n_icl_examples)
+
+                    selected_icl_examples = [possible_icl_examples[i] for i in indices]
+                else:
+                    raise ValueError(f'"{icl_strategy}" is not a valid incontext method. Please use "random" or '
+                                      '"bert_similarity"')
+
+                # Create ICL prompts
+                for sample in selected_icl_examples:
+                    positive_icl_examples.extend(
+                        self._format_single_incontext_prompt(sample, kdma, value)
+                    )
+
+                    if num_negative_samples > 0:
+                        negative_icl_examples.extend(
+                            self._format_single_incontext_prompt(sample, kdma, negative_value)
+                        )
         else:
             positive_system_prompt = baseline_system_prompt()
             if num_negative_samples > 0:
                 raise RuntimeError("No notion of negative samples for baseline run")
+            if "incontext" in kwargs and kwargs["incontext"]["number"] > 0:
+                raise RuntimeError("No notion of incontext examples for baseline run")
 
         positive_dialogs = []
         for _ in range(num_positive_samples):
             shuffled_choices = random.sample(choices, len(choices))
 
             prompt = action_selection_prompt(scenario_description, shuffled_choices)
-            dialog = [{'role': 'system', 'content': positive_system_prompt},
-                      {'role': 'user', 'content': prompt}]
+            dialog = [{'role': 'system', 'content': positive_system_prompt}]
+            dialog.extend(positive_icl_examples)
+            dialog.append({'role': 'user', 'content': prompt})
 
             positive_dialogs.append(dialog)
 
@@ -181,8 +339,9 @@ class OutlinesTransformersADM(ActionBasedADM):
             shuffled_choices = random.sample(choices, len(choices))
 
             prompt = action_selection_prompt(scenario_description, shuffled_choices)
-            dialog = [{'role': 'system', 'content': negative_system_prompt},
-                      {'role': 'user', 'content': prompt}]
+            dialog = [{'role': 'system', 'content': negative_system_prompt}]
+            dialog.extend(negative_icl_examples)
+            dialog.append({'role': 'user', 'content': prompt})
 
             negative_dialogs.append(dialog)
 
@@ -202,7 +361,7 @@ class OutlinesTransformersADM(ActionBasedADM):
                  extra={"markup": True})
         log.info(dialog_texts[0])
 
-        responses = generator(dialog_texts)
+        responses = self.run_in_batches(generator, dialog_texts, generator_batch_size)
 
         if len(dialog_texts) == 1:
             # Ensure responses is a list in the case that we passed a

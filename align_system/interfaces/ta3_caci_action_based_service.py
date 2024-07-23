@@ -6,9 +6,13 @@ from swagger_client.configuration import Configuration
 from swagger_client.api_client import ApiClient
 from swagger_client.models import Action
 
+from align_system.utils import logging
 from align_system.interfaces.abstracts import (
     Interface,
     ActionBasedScenarioInterface)
+
+
+log = logging.getLogger(__name__)
 
 
 class TA3CACIActionBasedServiceInterface(Interface):
@@ -46,6 +50,8 @@ class TA3CACIActionBasedServiceInterface(Interface):
             **start_session_params)
 
     def start_scenario(self):
+        log.info(f"ADM Name: {self.username}")
+
         scenario_request_params = {'session_id': self.session_id}
         if len(self.scenario_ids) > 0:
             scenario_id = self.scenario_ids.pop(0)
