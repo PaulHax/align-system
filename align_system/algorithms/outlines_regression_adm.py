@@ -179,6 +179,7 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
         for sample_idx in range(num_samples):
             # loop over target kdmas
             for target_kdma in target_kdmas:
+                kdma_sys_name = target_kdma['kdma']
                 target_kdma_name = target_kdma['name']
                 kdma_score_sys_prompt = kdma_score_prediction_system_prompt(target_kdma_name, target_kdma['description'])
 
@@ -192,9 +193,9 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
 
                     icl_examples = []
                     if use_icl:
-                        if target_kdma_name not in icl_datasets:
-                            raise RuntimeError(f"No incontext samples for targeted kdma: {target_kdma_name}")
-                        possible_icl_examples = icl_datasets[target_kdma_name]
+                        if kdma_sys_name not in icl_datasets:
+                            raise RuntimeError(f"No incontext samples for targeted kdma: {kdma_sys_name}")
+                        possible_icl_examples = icl_datasets[kdma_sys_name]
                         if len(possible_icl_examples) < n_icl_examples:
                             raise RuntimeError(f"Not enough possible incontext samples to learn from. Only "
                                             f"{len(possible_icl_examples)} samples available while asking for "
