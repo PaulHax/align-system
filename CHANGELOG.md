@@ -8,6 +8,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Added
 
 * Added incontext learning option for Outlines-based structured ADM
+* Added incontext learning option for Outlines-based regression ADM
 
 ## 0.4.1
 
