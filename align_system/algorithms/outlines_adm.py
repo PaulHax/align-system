@@ -439,34 +439,45 @@ class OutlinesTransformersADM(ActionBasedADM):
                                           ActionTypeEnum.CHECK_PULSE,
                                           ActionTypeEnum.CHECK_RESPIRATION,
                                           ActionTypeEnum.MOVE_TO_EVAC}:
-            dialog.append({'role': 'assistant',
-                           'content': '{}  I would choose to {}'.format(
-                               action_to_take.justification,
-                               action_to_take.unstructured)})
-            dialog.append({'role': 'user',
-                           'content': followup_clarify_character(scenario_state)})
-            dialog_text = self.dialog_to_prompt(dialog)
+            if action_to_take.character_id == None:
+                # Use follow up prompt to define selected_character
+                dialog.append({'role': 'assistant',
+                               'content': '{}  I would choose to {}'.format(
+                                   action_to_take.justification,
+                                   action_to_take.unstructured)})
+                dialog.append({'role': 'user',
+                               'content': followup_clarify_character(scenario_state)})
+                dialog_text = self.dialog_to_prompt(dialog)
 
-            characters = [c.name for c in scenario_state.characters]
+                characters = [c.name for c in scenario_state.characters]
 
-            generator = outlines.generate.json(
-                self.model,
-                character_choice_json_schema(json.dumps(characters)),
-                sampler=self.sampler,
-                whitespace_pattern=r"[ ]?")
+                generator = outlines.generate.json(
+                    self.model,
+                    character_choice_json_schema(json.dumps(characters)),
+                    sampler=self.sampler,
+                    whitespace_pattern=r"[ ]?")
 
-            log.info("[bold]*DIALOG PROMPT*[/bold]",
-                     extra={"markup": True})
-            log.info(dialog_text)
+                log.info("[bold]*DIALOG PROMPT*[/bold]",
+                         extra={"markup": True})
+                log.info(dialog_text)
 
-            selected_character = generator(dialog_text)
-            selected_character_idx = characters.index(selected_character['character_choice'])
+                selected_character = generator(dialog_text)
+                selected_character_idx = characters.index(selected_character['character_choice'])
 
-            log.info("[bold]*STRUCTURED RESPONSE*[/bold]",
-                     extra={"markup": True})
-            log.info(selected_character, extra={"highlighter": JSON_HIGHLIGHTER})
+                log.info("[bold]*STRUCTURED RESPONSE*[/bold]",
+                         extra={"markup": True})
+                log.info(selected_character, extra={"highlighter": JSON_HIGHLIGHTER})
 
-            action_to_take.character_id = scenario_state.characters[selected_character_idx].id
+                action_to_take.character_id = scenario_state.characters[selected_character_idx].id
+            else:
+                # Use action_to_take.character_id to define selected_character
+                selected_character = {}
+                for char_index in range(len(scenario_state.characters)):
+                    character = scenario_state.characters[char_index]
+                    if character.id == action_to_take.character_id:
+                        selected_character['character_choice'] = character.name
+                        selected_character_idx = char_index
+                selected_character['brief_reasoning'] = action_to_take.justification
 
         if action_to_take.action_type == ActionTypeEnum.APPLY_TREATMENT:
             valid_treatment_locations = get_swagger_class_enum_values(InjuryLocationEnum)

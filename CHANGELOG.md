@@ -20,6 +20,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Fixed
 
 * Fixed issue for running in batches with batch size in outlines ADMs
+* Fixed character selection to use the `character_id` associated with the selected action when available, otherwise send a follow up prompt
   
 ## 0.4.1
 
