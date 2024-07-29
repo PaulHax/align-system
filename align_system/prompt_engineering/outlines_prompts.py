@@ -144,7 +144,7 @@ def scenario_state_description_1(scenario_state):
     CHARACTERS:
     {% for character in scenario_state.characters %}
     - {{ character.name }}: {{ character.unstructured.rstrip() }}
-    {% if character.intent is not none %}
+    {% if character.intent is not none and character.intent is not false %}
       {{ character.name }}'s intent: {{ character.intent }}
     {% endif %}
     {% endfor %}
@@ -174,6 +174,27 @@ def scenario_state_description_2(scenario_state):
     {% for event in scenario_state.events %}
     - {{ event.unstructured.rstrip() }}
     {% endfor %}
+    """
+
+@outlines.prompt
+def scenario_state_description_dre(scenario_state):
+    """
+    CHARACTERS:
+    {% for character in scenario_state.characters %}
+    - {{ character.name }}: {{ character.unstructured.rstrip() }}
+    {% if character.intent is not none and character.intent is not false %}
+      {{ character.name }}'s intent: {{ character.intent }}
+    {% endif %}
+    {% if character.directness_of_causality is not none %}
+      {{ character.name }}'s directness of causality: {{ character.directness_of_causality }}
+    {% endif %}
+    {% if character.demographics['military_disposition'] is not none %}
+      {{ character.name }}'s group: {{ character.demographics['military_disposition'] }}
+    {% endif %}
+    {% endfor %}
+
+    SITUATION:
+    {{ scenario_state.unstructured.rstrip() }}
     """
 
 

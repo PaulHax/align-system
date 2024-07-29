@@ -18,9 +18,10 @@ from swagger_client.models import (
 from align_system.utils import logging
 from align_system.utils.hydrate_state import hydrate_scenario_state
 from align_system.algorithms.outlines_adm import OutlinesTransformersADM
+from align_system.algorithms.outlines_regression_adm import get_chain_of_thought_reasoning
 from align_system.prompt_engineering.outlines_prompts import (
     detailed_unstructured_treatment_action_text,
-    scenario_state_description_1,
+    scenario_state_description_dre,
     comparative_outcomes_system_prompt,
     comparative_outcome_prediction_prompt,
     comparative_outcome_prediction_json_schema,
@@ -125,25 +126,49 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
 
         return predicted_outcomes
 
-    def _format_single_incontext_prompt(self, prompt, target_kdma, expected_value):
-        # Predicted scores are 0-10, KDMA values are 0-1
-        expected_value = int(expected_value * 10)
 
-        # TODO: Add chain of thought reasoning?
-        target_wording_mapping = {
-            "MoralDesert": "moral deservingness",
-            "maximization": "maximization"
-        }
-        reasoning_text = f"Per the principle of {target_wording_mapping.get(target_kdma, target_kdma)}, " \
-                         f"this response scores a {expected_value}"
+    def get_icl_datasets(self, incontext_settings, target_kdmas):
+        icl_datasets = {}
+        # Read dataset(s)
+        for target_kdma in target_kdmas:
+            dset_kdma = target_kdma['kdma']
+            dset_f = incontext_settings["datasets"][dset_kdma]
+            with open(dset_f) as f:
+                dset = json.load(f)
 
-        # TODO: Validate against schema?
-        answer = f'{{"reasoning": "{reasoning_text}", "score": {expected_value}}}'
+            icl_datasets[dset_kdma] = []
+            for icl_sample in dset:
+                state, actions = hydrate_scenario_state(icl_sample["input"])
+                icl_choices = self.format_choices(
+                    [a.unstructured for a in actions],
+                    actions,
+                    state
+                )
 
-        return [
-            {"role": "user", "content": prompt},
-            {"role": "assistant", "content": answer}
-        ]
+                icl_choices_with_outcomes = {}
+                for choice in icl_choices:
+                    # TODO: Include outcome prediction for ICL examples?
+                    icl_choices_with_outcomes[choice] = {'predicted_outcome':None} 
+
+                icl_scenario_description = scenario_state_description_dre(state)
+                icl_prompt = comparative_kdma_score_prediction_prompt(icl_scenario_description, 
+                                                                    icl_choices_with_outcomes, 
+                                                                    dset_kdma)
+                icl_reponse = {}
+                for action, icl_choice, label in zip(actions, icl_choices, icl_sample["label"]):
+                    if dset_kdma not in label:
+                        continue
+
+                    icl_reponse[icl_choice] = {}
+                    icl_reponse[icl_choice]['reasoning'] = get_chain_of_thought_reasoning(target_kdma, action, state, icl_choice, label[dset_kdma])
+                    # Predicted scores are 0-10, KDMA values are 0-1
+                    icl_reponse[icl_choice]['score'] = int(label[dset_kdma] * 10)
+
+                icl_datasets[dset_kdma].append({
+                    "prompt": icl_prompt,
+                    "response": icl_reponse
+                    })
+        return icl_datasets
 
     def sample_kdma_score_predictions(self,
                                       scenario_description,
@@ -156,44 +181,15 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
                                       incontext_settings={}):
         '''
         Samples predictions of kdma scores associated with each choice
-        Outputs a list of ADM responses and a corresponding keys:
-        - kdma_score_responses = [{score:int, reasoning:str}, ...]
-        - reponse_keys = [{kdma:str, choice:str}, ...]
+        Outputs a list of ADM predictions:
+        - predictions: [{choice:{predicted_outcome:str, kdma:{reasoning:str, score:int}}, ...}]
         '''
         use_icl = False
         icl_datasets = {}
         if "number" in incontext_settings and incontext_settings["number"] > 0:
             use_icl = True
             n_icl_examples = incontext_settings["number"]
-
-            # Read dataset(s)
-            for dset_kdma, dset_f in incontext_settings["datasets"].items():
-                with open(dset_f) as f:
-                    dset = json.load(f)
-
-                icl_datasets[dset_kdma] = []
-                for icl_sample in dset:
-                    state, actions = hydrate_scenario_state(icl_sample["input"])
-                    icl_choices = self.format_choices(
-                        [a.unstructured for a in actions],
-                        actions,
-                        state
-                    )
-                    for icl_choice, label in zip(icl_choices, icl_sample["label"]):
-                        if dset_kdma not in label:
-                            continue
-
-                        icl_scenario_description = scenario_state_description_1(state)
-
-                        # TODO: Include outcome in ICL example?
-                        icl_prompt = kdma_score_prediction_prompt(
-                            icl_scenario_description, icl_choice, None, dset_kdma
-                        )
-
-                        icl_datasets[dset_kdma].append({
-                            "prompt": icl_prompt,
-                            "expected_value": label[dset_kdma],
-                        })
+            icl_datasets = self.get_icl_datasets(incontext_settings, target_kdmas)
 
         kdma_dialogs = []
         # loop over samples
@@ -206,8 +202,6 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
                     kdma_score_sys_prompt = comparative_kdma_score_prediction_system_prompt_with_examples(target_kdma_name, target_kdma['description'], target_kdma['score_examples'])
                 else:
                     kdma_score_sys_prompt = comparative_kdma_score_prediction_system_prompt(target_kdma_name, target_kdma['description'])
-
-
 
                 icl_examples = []
                 if use_icl:
@@ -225,7 +219,7 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
                         selected_icl_examples = random.sample(possible_icl_examples, n_icl_examples)
                     elif icl_strategy == "bert_similarity":
                         # TODO: Include outcome prediction for ICL examples?
-                        no_outcome_prompt = kdma_score_prediction_prompt(scenario_description, choice, None, target_kdma_name)
+                        no_outcome_prompt = comparative_kdma_score_prediction_prompt(scenario_description, predictions[sample_idx], target_kdma_name)
 
                         possible_icl_prompts = [icl_sample["prompt"] for icl_sample in possible_icl_examples]
 
@@ -240,13 +234,14 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
                                          '"bert_similarity"')
 
                     for icl_sample in selected_icl_examples:
-                        icl_examples.extend(
-                            self._format_single_incontext_prompt(icl_sample["prompt"], target_kdma_name, icl_sample["expected_value"])
-                        )
+                        icl_examples.extend([
+                            {"role": "user", "content": icl_sample['prompt']},
+                            {"role": "assistant", "content": f'{icl_sample['response']}'}
+                        ])
 
                 predict_kdma_prompt = comparative_kdma_score_prediction_prompt(scenario_description, predictions[sample_idx], target_kdma_name)
                 dialog = [{'role': 'system', 'content': kdma_score_sys_prompt}]
-                # dialog.extend(icl_examples) # TODO
+                dialog.extend(icl_examples)
                 dialog.append({'role': 'user', 'content': predict_kdma_prompt})
                 kdma_dialogs.append(dialog)
 
@@ -360,7 +355,7 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
                                 kdma_score_examples=False,
                                 **kwargs):
 
-        scenario_description = scenario_state_description_1(scenario_state)
+        scenario_description = scenario_state_description_dre(scenario_state)
 
         # Important that the choices stay in the same order as the
         # available actions as we'll use the selected index later to

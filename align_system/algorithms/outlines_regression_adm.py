@@ -19,7 +19,7 @@ from align_system.utils.hydrate_state import hydrate_scenario_state
 from align_system.algorithms.outlines_adm import OutlinesTransformersADM
 from align_system.prompt_engineering.outlines_prompts import (
     detailed_unstructured_treatment_action_text,
-    scenario_state_description_1,
+    scenario_state_description_dre,
     outcomes_system_prompt,
     outcome_prediction_prompt,
     outcome_prediction_json_schema,
@@ -34,6 +34,65 @@ from align_system.prompt_engineering.outlines_prompts import (
 log = logging.getLogger(__name__)
 JSON_HIGHLIGHTER = JSONHighlighter()
 
+# Incontext helper function
+def get_chain_of_thought_reasoning(target_kdma, action, state, choice, label):
+    # Predicted scores are 0-10, KDMA values are 0-1
+    expected_value = int(label * 10)
+    cot_reasoning = ""
+
+    # Moral derivngess or moral judgement
+    # Example: Because Alex acted with no intent and did not cause of harm, 
+    #          choosing Treat Alex would score a 5 for the the principle of moral judgement.
+    if target_kdma['kdma'] == 'MoralDesert' or  target_kdma['kdma'] == 'Moral judgement':
+        if hasattr(action, 'character_id') and action.character_id is not None:
+            # get character associated with action
+            action_character = None
+            for character in state.characters:
+                if character.id == action.character_id:
+                    action_character = character
+                    break
+            if action_character is not None:
+                # add intent to reasoning
+                if not hasattr(action_character, 'intent') or action_character.intent is None or action_character.intent == 'no intent':
+                    cot_reasoning += f"Because {action_character.name} acted with no intent"
+                else:
+                    cot_reasoning += f"Because {action_character.name} acted to {action_character.intent}"
+                # add directness of causality to reasoning
+                if not hasattr(action_character, 'directness_of_causality') or action_character.directness_of_causality is None or action_character.directness_of_causality == 'none':
+                     cot_reasoning += f" and did not cause of harm, choosing "
+                else:
+                    cot_reasoning += f" and had a {action_character.directness_of_causality} cause of harm, choosing "
+            else:
+                raise RuntimeError(f"Character not found in state: {action.character_id}")
+    
+    # Ingroup bias
+    # Example: Patient A is a soldier in your unit and is in group Allied US, 
+    #           choosing to treat patient A would score a 0.6 for ingroup bias.
+    elif target_kdma['kdma'] == 'Ingroup Bias':
+        if hasattr(action, 'character_id') and action.character_id is not None:
+            # get character associated with action
+            action_character = None
+            for character in state.characters:
+                if character.id == action.character_id:
+                    action_character = character
+                    break
+            if action_character is not None:
+                # add unstructured charcter description to reasoning
+                if hasattr(action_character, 'unstructured') and action_character.unstructured is not None:
+                    cot_reasoning += f"Because {action_character.name} is {action_character.unstructured.rstrip()}"
+                    # add military disposition
+                    if action_character.demographics['military_disposition'] is not None:
+                        cot_reasoning += f" and is in group {action_character.demographics['military_disposition']}, choosing "
+            else:
+                raise RuntimeError(f"Character not found in state: {action.character_id}")
+    
+    # TODO - Value of life
+    # TODO - Quality of life
+    
+    else:
+        cot_reasoning = f"Choosing "
+    cot_reasoning += f"{choice} would score a {expected_value} for the the principle of {target_kdma['name']}."
+    return cot_reasoning
 
 class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
     def __init__(self,
@@ -111,65 +170,6 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
             {"role": "assistant", "content": answer}
         ]
 
-    def get_chain_of_thought_reasoning(self, target_kdma, action, state, choice, label):
-        # Predicted scores are 0-10, KDMA values are 0-1
-        expected_value = int(label * 10)
-        cot_reasoning = ""
-
-        # Moral derivngess or moral judgement
-        # Example: Because Alex acted with no intent and did not cause of harm, 
-        #          choosing Treat Alex would score a 5 for the the principle of moral judgement.
-        if target_kdma['kdma'] == 'MoralDesert' or  target_kdma['kdma'] == 'Moral judgement':
-            if hasattr(action, 'character_id') and action.character_id is not None:
-                # get character associated with action
-                action_character = None
-                for character in state.characters:
-                    if character.id == action.character_id:
-                        action_character = character
-                        break
-                if action_character is not None:
-                    # add intent to reasoning
-                    if not hasattr(action_character, 'intent') or action_character.intent is None or action_character.intent == 'no intent':
-                        cot_reasoning += f"Because {action_character.name} acted with no intent"
-                    else:
-                        cot_reasoning += f"Because {action_character.name} acted to {action_character.intent}"
-                    # add directness of causality to reasoning
-                    if not hasattr(action_character, 'directness_of_causality') or action_character.directness_of_causality is None or action_character.directness_of_causality == 'none':
-                         cot_reasoning += f" and did not cause of harm, choosing "
-                    else:
-                        cot_reasoning += f" and had a {action_character.directness_of_causality} cause of harm, choosing "
-                else:
-                    raise RuntimeError(f"Character not found in state: {action.character_id}")
-        
-        # Ingroup bias
-        # Example: Patient A is a soldier in your unit and is in group Allied US, 
-        #           choosing to treat patient A would score a 0.6 for ingroup bias.
-        elif target_kdma['kdma'] == 'Ingroup Bias':
-            if hasattr(action, 'character_id') and action.character_id is not None:
-                # get character associated with action
-                action_character = None
-                for character in state.characters:
-                    if character.id == action.character_id:
-                        action_character = character
-                        break
-                if action_character is not None:
-                    # add unstructured charcter description to reasoning
-                    if hasattr(action_character, 'unstructured') and action_character.unstrucutured is not None:
-                        cot_reasoning += f"Because {action_character.name} is {lower(action_character.unstructured)}"
-                        # add military disposition
-                        if hasattr(action_character.demographics, 'military_disposition') and action_character.demographics.military_disposition is not None:
-                            cot_reasoning += f" and is in group {action_character.demographics.military_disposition}, choosing "
-                else:
-                    raise RuntimeError(f"Character not found in state: {action.character_id}")
-        
-        # TODO - Value of life
-        # TODO - Quality of life
-        
-        else:
-            cot_reasoning = f"Choosing "
-        cot_reasoning += f"{choice} would score a {expected_value} for the the principle of {target_kdma['name']}."
-        return cot_reasoning
-
     def get_icl_datasets(self, incontext_settings, target_kdmas):
         icl_datasets = {}
         # Read dataset(s)
@@ -191,7 +191,7 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
                     if dset_kdma not in label:
                         continue
 
-                    icl_scenario_description = scenario_state_description_1(state)
+                    icl_scenario_description = scenario_state_description_dre(state)
 
                     # TODO: Include outcome in ICL example?
                     icl_prompt = kdma_score_prediction_prompt(
@@ -201,7 +201,7 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
                     icl_datasets[dset_kdma].append({
                         "prompt": icl_prompt,
                         "expected_value": label[dset_kdma],
-                        "reasoning": self.get_chain_of_thought_reasoning(target_kdma, action, state, icl_choice, label[dset_kdma])
+                        "reasoning": get_chain_of_thought_reasoning(target_kdma, action, state, icl_choice, label[dset_kdma])
                     })
         return icl_datasets
 
@@ -389,7 +389,7 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
                                 kdma_score_examples=False,
                                 **kwargs):
 
-        scenario_description = scenario_state_description_1(scenario_state)
+        scenario_description = scenario_state_description_dre(scenario_state)
 
         # Important that the choices stay in the same order as the
         # available actions as we'll use the selected index later to
