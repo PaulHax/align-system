@@ -25,6 +25,7 @@ from align_system.prompt_engineering.outlines_prompts import (
     comparative_outcome_prediction_prompt,
     comparative_outcome_prediction_json_schema,
     comparative_kdma_score_prediction_system_prompt,
+    comparative_kdma_score_prediction_system_prompt_with_examples,
     comparative_kdma_score_prediction_prompt,
     comparative_kdma_score_prediction_json_schema,
     regression_alignment_system_prompt,
@@ -151,6 +152,7 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
                                       predictions,
                                       num_samples=1,
                                       batch_size=6,
+                                      kdma_score_examples=False,
                                       incontext_settings={}):
         '''
         Samples predictions of kdma scores associated with each choice
@@ -200,7 +202,11 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
             for target_kdma in target_kdmas:
                 kdma_sys_name = target_kdma['kdma']
                 target_kdma_name = target_kdma['name']
-                kdma_score_sys_prompt = comparative_kdma_score_prediction_system_prompt(target_kdma_name, target_kdma['description'])
+                if kdma_score_examples:
+                    kdma_score_sys_prompt = comparative_kdma_score_prediction_system_prompt_with_examples(target_kdma_name, target_kdma['description'], target_kdma['score_examples'])
+                else:
+                    kdma_score_sys_prompt = comparative_kdma_score_prediction_system_prompt(target_kdma_name, target_kdma['description'])
+
 
 
                 icl_examples = []
@@ -351,6 +357,7 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
                                 distribution_matching='average',
                                 generator_batch_size=5,
                                 kdma_descriptions_map='align_system/prompt_engineering/kdma_descriptions.yml',
+                                kdma_score_examples=False,
                                 **kwargs):
 
         scenario_description = scenario_state_description_1(scenario_state)
@@ -382,6 +389,8 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
             else:
                 target_kdmas[kdma_idx]['name'] = kdma_descriptions[kdma]['name']
                 target_kdmas[kdma_idx]['description'] = kdma_descriptions[kdma]['description']
+                target_kdmas[kdma_idx]['score_examples'] = kdma_descriptions[kdma]['score_examples']
+
 
         # Predict outcome of selecting each choice - optional
         if predict_outcomes:
@@ -402,6 +411,7 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
         predictions = self.sample_kdma_score_predictions(scenario_description, choices, \
                                                         target_kdmas, predictions, \
                                                         num_samples, generator_batch_size, \
+                                                        kdma_score_examples, \
                                                         incontext_settings=kwargs.get("incontext", {}))
 
         # Reformat predictions from a list of sampled dictionaries 

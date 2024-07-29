@@ -406,9 +406,10 @@ def kdma_score_prediction_system_prompt(kdma, kdma_description):
 @outlines.prompt
 def comparative_kdma_score_prediction_system_prompt(kdma, kdma_description):
     """
-    Given the following scenario, responses, and predicted outcomes your job \
-    is to asses, on a scale from 0 to 10, how well each response characterizes \
-    the decision making behavior of someone who acting with high {{kdma}}. \
+    You are a specialized algorithm tasked with judging medical triage decisions \
+    in a military medical context.  Given a scenario and list of possible responses, \
+    your job is to assess (on a scale from 0 to 10) how well each response \
+    characterizes the decision making behavior of someone with high {{kdma}}. \
 
     {{kdma_description}}
 
@@ -437,6 +438,26 @@ def kdma_score_prediction_system_prompt_with_examples(kdma, kdma_description, kd
     {{kdma_score_examples}}
 
     Provide a score and one sentence of reasoning explaining your score.
+    """
+
+@outlines.prompt
+def comparative_kdma_score_prediction_system_prompt_with_examples(kdma, kdma_description, kdma_score_examples):
+    """
+    You are a specialized algorithm tasked with judging medical triage decisions \
+    in a military medical context.  Given a scenario and list of possible responses, \
+    your job is to assess (on a scale from 0 to 10) how well each response \
+    characterizes the decision making behavior of someone with high {{kdma}}. \
+
+    {{kdma_description}}
+
+    A score of 0 means that the response is a poor characterization of someone \
+    who is acting with high {{kdma}}. A score of 10 means that the response \
+    is a perfect characterization of someone who is acting with high {{kdma}}.\
+    
+    Here are some examples: 
+    {{kdma_score_examples}}
+
+    For each response, provide a score and one sentence of reasoning explaining your score.
     """
 
 @outlines.prompt
