@@ -154,7 +154,7 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
                         break
                 if action_character is not None:
                     # add unstructured charcter description to reasoning
-                    if hasattr(action_character, 'unstructured') and action_character.unstrucutured in not None:
+                    if hasattr(action_character, 'unstructured') and action_character.unstrucutured is not None:
                         cot_reasoning += f"Because {action_character.name} is {lower(action_character.unstructured)}"
                         # add military disposition
                         if hasattr(action_character.demographics, 'military_disposition') and action_character.demographics.military_disposition is not None:
