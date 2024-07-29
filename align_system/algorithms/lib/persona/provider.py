@@ -76,8 +76,16 @@ class PersonaProvider:
 
 
         if alignment_target is None or len(alignment_target.kdma_values) == 0: # type: ignore
+            if cache and 'no_alignment_target' in self._backstory_alignment_cache:
+                return self._backstory_alignment_cache['no_alignment_target']
+            elif not cache and 'no_alignment_target' in self._backstory_alignment_cache:
+                del self._backstory_alignment_cache['no_alignment_target']
+
             # There's no alignment target, so randomly sample a set of backstories
-            return random.sample(self._backstories, n)
+            sample = random.sample(self._backstories, n)
+            if cache:
+                self._backstory_alignment_cache['no_alignment_target'] = sample
+            return sample
 
         # Map the alignment target to a probe
         alignment_target_dict = alignment_target.to_dict() # type: ignore
@@ -89,7 +97,7 @@ class PersonaProvider:
 
         # Serialize the probe values into a repeatable string
         probe_values_str = json.dumps(probe_values, sort_keys=True)
-        if probe_values_str in self._backstory_alignment_cache:
+        if cache and probe_values_str in self._backstory_alignment_cache:
             return self._backstory_alignment_cache[probe_values_str]
 
         # Now that we have the probe values, we can find a set of backstories that maximize the value.
@@ -107,7 +115,11 @@ class PersonaProvider:
 
         # Cache the panel
         sampled_backstories = [b[0] for b in backstories_with_values[:n]]
-        self._backstory_alignment_cache[probe_values_str] = sampled_backstories
+        if cache:
+            self._backstory_alignment_cache[probe_values_str] = sampled_backstories
+        elif probe_values_str in self._backstory_alignment_cache:
+            # Clear the cache if it's not supposed to be cached
+            del self._backstory_alignment_cache[probe_values_str]
 
         # Return the top N backstories
         return sampled_backstories
