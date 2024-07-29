@@ -1,5 +1,5 @@
 defaults:
-  - outlines_regression_aligned
+  - outlines_regression_aligned_comparative
 
 inference_kwargs:
   generator_batch_size: 5

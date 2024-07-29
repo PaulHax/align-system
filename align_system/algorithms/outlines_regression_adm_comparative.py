@@ -5,6 +5,7 @@ import pathlib
 import yaml
 import itertools
 import torch
+from collections import defaultdict
 
 import outlines
 from outlines.samplers import MultinomialSampler
@@ -17,16 +18,17 @@ from swagger_client.models import (
 from align_system.utils import logging
 from align_system.utils.hydrate_state import hydrate_scenario_state
 from align_system.algorithms.outlines_adm import OutlinesTransformersADM
+from align_system.algorithms.outlines_regression_adm import get_chain_of_thought_reasoning
 from align_system.prompt_engineering.outlines_prompts import (
     detailed_unstructured_treatment_action_text,
     scenario_state_description_dre,
-    outcomes_system_prompt,
-    outcome_prediction_prompt,
-    outcome_prediction_json_schema,
-    kdma_score_prediction_system_prompt,
-    kdma_score_prediction_system_prompt_with_examples,
-    kdma_score_prediction_prompt,
-    kdma_score_prediction_json_schema,
+    comparative_outcomes_system_prompt,
+    comparative_outcome_prediction_prompt,
+    comparative_outcome_prediction_json_schema,
+    comparative_kdma_score_prediction_system_prompt,
+    comparative_kdma_score_prediction_system_prompt_with_examples,
+    comparative_kdma_score_prediction_prompt,
+    comparative_kdma_score_prediction_json_schema,
     regression_alignment_system_prompt,
     action_selection_prompt
 )
@@ -34,67 +36,34 @@ from align_system.prompt_engineering.outlines_prompts import (
 log = logging.getLogger(__name__)
 JSON_HIGHLIGHTER = JSONHighlighter()
 
-# Incontext helper function
-def get_chain_of_thought_reasoning(target_kdma, action, state, choice, label):
-    # Predicted scores are 0-10, KDMA values are 0-1
-    expected_value = int(label * 10)
-    cot_reasoning = ""
+# Data strucutre reformat helper function 
+def merge_samples(dict_list):
+    # Initialize the result dictionary
+    result = {}
 
-    # Moral derivngess or moral judgement
-    # Example: Because Alex acted with no intent and did not cause of harm, 
-    #          choosing Treat Alex would score a 5 for the the principle of moral judgement.
-    if target_kdma['kdma'] == 'MoralDesert' or  target_kdma['kdma'] == 'Moral judgement':
-        if hasattr(action, 'character_id') and action.character_id is not None:
-            # get character associated with action
-            action_character = None
-            for character in state.characters:
-                if character.id == action.character_id:
-                    action_character = character
-                    break
-            if action_character is not None:
-                # add intent to reasoning
-                if not hasattr(action_character, 'intent') or action_character.intent is None or action_character.intent == 'no intent':
-                    cot_reasoning += f"Because {action_character.name} acted with no intent"
-                else:
-                    cot_reasoning += f"Because {action_character.name} acted to {action_character.intent}"
-                # add directness of causality to reasoning
-                if not hasattr(action_character, 'directness_of_causality') or action_character.directness_of_causality is None or action_character.directness_of_causality == 'none':
-                     cot_reasoning += f" and did not cause of harm, choosing "
-                else:
-                    cot_reasoning += f" and had a {action_character.directness_of_causality} cause of harm, choosing "
-            else:
-                raise RuntimeError(f"Character not found in state: {action.character_id}")
-    
-    # Ingroup bias
-    # Example: Patient A is a soldier in your unit and is in group Allied US, 
-    #           choosing to treat patient A would score a 0.6 for ingroup bias.
-    elif target_kdma['kdma'] == 'Ingroup Bias':
-        if hasattr(action, 'character_id') and action.character_id is not None:
-            # get character associated with action
-            action_character = None
-            for character in state.characters:
-                if character.id == action.character_id:
-                    action_character = character
-                    break
-            if action_character is not None:
-                # add unstructured charcter description to reasoning
-                if hasattr(action_character, 'unstructured') and action_character.unstructured is not None:
-                    cot_reasoning += f"Because {action_character.name} is {action_character.unstructured.rstrip()}"
-                    # add military disposition
-                    if action_character.demographics['military_disposition'] is not None:
-                        cot_reasoning += f" and is in group {action_character.demographics['military_disposition']}, choosing "
-            else:
-                raise RuntimeError(f"Character not found in state: {action.character_id}")
-    
-    # TODO - Value of life
-    # TODO - Quality of life
-    
-    else:
-        cot_reasoning = f"Choosing "
-    cot_reasoning += f"{choice} would score a {expected_value} for the the principle of {target_kdma['name']}."
-    return cot_reasoning
+    # Iterate over each dictionary in the list
+    for d in dict_list:
+        for outer_key, inner_dict in d.items():
+            if outer_key not in result:
+                result[outer_key] = {}
 
-class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
+            for inner_key, value in inner_dict.items():
+                if isinstance(value, dict):
+                    if inner_key not in result[outer_key]:
+                        result[outer_key][inner_key] = {}
+                    
+                    for sub_key, sub_value in value.items():
+                        if sub_key not in result[outer_key][inner_key]:
+                            result[outer_key][inner_key][sub_key] = []
+                        result[outer_key][inner_key][sub_key].append(sub_value)
+                else:
+                    if inner_key not in result[outer_key]:
+                        result[outer_key][inner_key] = []
+                    result[outer_key][inner_key].append(value)
+    
+    return result
+
+class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
     def __init__(self,
                  model_name,
                  device='auto',
@@ -125,20 +94,20 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
         Returns a list of samples where each sample is a list of predicted outcomes
         '''
         outcome_dialogs = []
-        outcomes_sys_prompt = outcomes_system_prompt()
+        outcomes_sys_prompt = comparative_outcomes_system_prompt()
 
         for _ in range(num_samples):
-            for choice in choices:
-                predict_outcome_prompt = outcome_prediction_prompt(scenario_description, choices, choice)
-                outcome_dialogs.append([{'role': 'system', 'content': outcomes_sys_prompt},
-                                        {'role': 'user', 'content': predict_outcome_prompt}])
+            predict_outcome_prompt = comparative_outcome_prediction_prompt(scenario_description, choices)
+            outcome_dialogs.append([{'role': 'system', 'content': outcomes_sys_prompt},
+                                    {'role': 'user', 'content': predict_outcome_prompt}])
+
 
         # Need to set the whitespace_pattern to prevent the state
         # machine from looping indefinitely in some cases, see:
         # https://github.com/outlines-dev/outlines/issues/690#issuecomment-2102291934
         outcome_generator = outlines.generate.json(
             self.model,
-            outcome_prediction_json_schema(),
+            comparative_outcome_prediction_json_schema(choices),
             sampler=self.sampler,
             whitespace_pattern=r"[ ]?")
 
@@ -148,10 +117,8 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
                  extra={"markup": True})
         log.info(outcome_dialog_texts[0])
 
-        # List of {predicted_outcomes:} with length = num_samples * len(choices)
+        # List of {choice: {predicted_outcomes:str}, ...} with length = num_samples
         predicted_outcomes = self.run_in_batches(outcome_generator, outcome_dialog_texts, batch_size)
-        # Reshape to matrix of num_samples x len(choices)
-        predicted_outcomes = [predicted_outcomes[i:i+len(choices)] for i in range(0,len(predicted_outcomes),len(choices))]
 
         log.info("[bold]*OUTCOME PREDICTION RESPONSE*[/bold]",
                  extra={"markup": True})
@@ -159,16 +126,6 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
 
         return predicted_outcomes
 
-    def _format_single_incontext_prompt(self, icl_example, target_kdma):
-        # Predicted scores are 0-10, KDMA values are 0-1
-        expected_value = int(icl_example['expected_value'] * 10)
-
-        answer = f'{{"reasoning": "{icl_example['reasoning']}", "score": {expected_value}}}'
-
-        return [
-            {"role": "user", "content": icl_example['prompt']},
-            {"role": "assistant", "content": answer}
-        ]
 
     def get_icl_datasets(self, incontext_settings, target_kdmas):
         icl_datasets = {}
@@ -187,39 +144,45 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
                     actions,
                     state
                 )
+
+                icl_choices_with_outcomes = {}
+                for choice in icl_choices:
+                    # TODO: Include outcome prediction for ICL examples?
+                    icl_choices_with_outcomes[choice] = {'predicted_outcome':None} 
+
+                icl_scenario_description = scenario_state_description_dre(state)
+                icl_prompt = comparative_kdma_score_prediction_prompt(icl_scenario_description, 
+                                                                    icl_choices_with_outcomes, 
+                                                                    dset_kdma)
+                icl_reponse = {}
                 for action, icl_choice, label in zip(actions, icl_choices, icl_sample["label"]):
                     if dset_kdma not in label:
                         continue
 
-                    icl_scenario_description = scenario_state_description_dre(state)
+                    icl_reponse[icl_choice] = {}
+                    icl_reponse[icl_choice]['reasoning'] = get_chain_of_thought_reasoning(target_kdma, action, state, icl_choice, label[dset_kdma])
+                    # Predicted scores are 0-10, KDMA values are 0-1
+                    icl_reponse[icl_choice]['score'] = int(label[dset_kdma] * 10)
 
-                    # TODO: Include outcome in ICL example?
-                    icl_prompt = kdma_score_prediction_prompt(
-                        icl_scenario_description, icl_choices, icl_choice, None, dset_kdma
-                    )
-
-                    icl_datasets[dset_kdma].append({
-                        "prompt": icl_prompt,
-                        "expected_value": label[dset_kdma],
-                        "reasoning": get_chain_of_thought_reasoning(target_kdma, action, state, icl_choice, label[dset_kdma])
+                icl_datasets[dset_kdma].append({
+                    "prompt": icl_prompt,
+                    "response": icl_reponse
                     })
         return icl_datasets
-
 
     def sample_kdma_score_predictions(self,
                                       scenario_description,
                                       choices,
                                       target_kdmas,
-                                      predicted_outcomes=None,
+                                      predictions,
                                       num_samples=1,
                                       batch_size=6,
                                       kdma_score_examples=False,
                                       incontext_settings={}):
         '''
         Samples predictions of kdma scores associated with each choice
-        Outputs a list of ADM responses and a corresponding keys:
-        - kdma_score_responses = [{score:int, reasoning:str}, ...]
-        - reponse_keys = [{kdma:str, choice:str}, ...]
+        Outputs a list of ADM predictions:
+        - predictions: [{choice:{predicted_outcome:str, kdma:{reasoning:str, score:int}}, ...}]
         '''
         use_icl = False
         icl_datasets = {}
@@ -229,72 +192,65 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
             icl_datasets = self.get_icl_datasets(incontext_settings, target_kdmas)
 
         kdma_dialogs = []
-        response_keys = []
         # loop over samples
         for sample_idx in range(num_samples):
             # loop over target kdmas
             for target_kdma in target_kdmas:
+                kdma_sys_name = target_kdma['kdma']
+                target_kdma_name = target_kdma['name']
                 if kdma_score_examples:
-                    kdma_score_sys_prompt = kdma_score_prediction_system_prompt_with_examples(target_kdma['name'], target_kdma['description'], target_kdma['score_examples'])
+                    kdma_score_sys_prompt = comparative_kdma_score_prediction_system_prompt_with_examples(target_kdma_name, target_kdma['description'], target_kdma['score_examples'])
                 else:
-                    kdma_score_sys_prompt = kdma_score_prediction_system_prompt(target_kdma['name'], target_kdma['description'])
+                    kdma_score_sys_prompt = comparative_kdma_score_prediction_system_prompt(target_kdma_name, target_kdma['description'])
 
-                # loop over choices
-                for choice_idx in range(len(choices)):
-                    choice = choices[choice_idx]
-                    if predicted_outcomes:
-                        outcome = predicted_outcomes[sample_idx][choice_idx]['predicted_outcome']
+                icl_examples = []
+                if use_icl:
+                    if kdma_sys_name not in icl_datasets:
+                        raise RuntimeError(f"No incontext samples for targeted kdma: {kdma_sys_name}")
+                    possible_icl_examples = icl_datasets[kdma_sys_name]
+                    if len(possible_icl_examples) < n_icl_examples:
+                        raise RuntimeError(f"Not enough possible incontext samples to learn from. Only "
+                                        f"{len(possible_icl_examples)} samples available while asking for "
+                                        f"{n_icl_examples} incontext samples.")
+
+                    # Downselect to n_icl_examples via given method
+                    icl_strategy = incontext_settings["method"]
+                    if icl_strategy == "random":
+                        selected_icl_examples = random.sample(possible_icl_examples, n_icl_examples)
+                    elif icl_strategy == "bert_similarity":
+                        # TODO: Include outcome prediction for ICL examples?
+                        no_outcome_prompt = comparative_kdma_score_prediction_prompt(scenario_description, predictions[sample_idx], target_kdma_name)
+
+                        possible_icl_prompts = [icl_sample["prompt"] for icl_sample in possible_icl_examples]
+
+                        # Create similarity scores between the ICL samples and find top-k indices
+                        from bert_score import score
+                        _, _, F1 = score([no_outcome_prompt]*len(possible_icl_prompts), possible_icl_prompts, lang="en")
+                        _, indices = torch.topk(F1, n_icl_examples)
+
+                        selected_icl_examples = [possible_icl_examples[i] for i in indices]
                     else:
-                        outcome = None
+                        raise ValueError(f'"{icl_strategy}" is not a valid incontext method. Please use "random" or '
+                                         '"bert_similarity"')
 
-                    icl_examples = []
-                    if use_icl:
-                        if target_kdma['kdma'] not in icl_datasets:
-                            raise RuntimeError(f"No incontext samples for targeted kdma: {target_kdma['name']}")
-                        possible_icl_examples = icl_datasets[target_kdma['kdma']]
-                        if len(possible_icl_examples) < n_icl_examples:
-                            raise RuntimeError(f"Not enough possible incontext samples to learn from. Only "
-                                            f"{len(possible_icl_examples)} samples available while asking for "
-                                            f"{n_icl_examples} incontext samples.")
+                    for icl_sample in selected_icl_examples:
+                        icl_examples.extend([
+                            {"role": "user", "content": icl_sample['prompt']},
+                            {"role": "assistant", "content": f'{icl_sample['response']}'}
+                        ])
 
-                        # Downselect to n_icl_examples via given method
-                        icl_strategy = incontext_settings["method"]
-                        if icl_strategy == "random":
-                            selected_icl_examples = random.sample(possible_icl_examples, n_icl_examples)
-                        elif icl_strategy == "bert_similarity":
-                            # TODO: Include outcome prediction for ICL examples?
-                            no_outcome_prompt = kdma_score_prediction_prompt(scenario_description, choices, choice, None, target_kdma['name'])
-
-                            possible_icl_prompts = [icl_sample["prompt"] for icl_sample in possible_icl_examples]
-
-                            # Create similarity scores between the ICL samples and find top-k indices
-                            from bert_score import score
-                            _, _, F1 = score([no_outcome_prompt]*len(possible_icl_prompts), possible_icl_prompts, lang="en")
-                            _, indices = torch.topk(F1, n_icl_examples)
-
-                            selected_icl_examples = [possible_icl_examples[i] for i in indices]
-                        else:
-                            raise ValueError(f'"{icl_strategy}" is not a valid incontext method. Please use "random" or '
-                                             '"bert_similarity"')
-
-                        for icl_sample in selected_icl_examples:
-                            icl_examples.extend(
-                                self._format_single_incontext_prompt(icl_sample, target_kdma)
-                            )
-
-                    predict_kdma_prompt = kdma_score_prediction_prompt(scenario_description, choices, choice, outcome, target_kdma['name'])
-                    dialog = [{'role': 'system', 'content': kdma_score_sys_prompt}]
-                    dialog.extend(icl_examples)
-                    dialog.append({'role': 'user', 'content': predict_kdma_prompt})
-                    kdma_dialogs.append(dialog)
-                    response_keys.append({'kdma':target_kdma['kdma'], 'choice':choice})
+                predict_kdma_prompt = comparative_kdma_score_prediction_prompt(scenario_description, predictions[sample_idx], target_kdma_name)
+                dialog = [{'role': 'system', 'content': kdma_score_sys_prompt}]
+                dialog.extend(icl_examples)
+                dialog.append({'role': 'user', 'content': predict_kdma_prompt})
+                kdma_dialogs.append(dialog)
 
         # Need to set the whitespace_pattern to prevent the state
         # machine from looping indefinitely in some cases, see:
         # https://github.com/outlines-dev/outlines/issues/690#issuecomment-2102291934
         kdma_score_generator = outlines.generate.json(
             self.model,
-            kdma_score_prediction_json_schema(),
+            comparative_kdma_score_prediction_json_schema(choices),
             sampler=self.sampler,
             whitespace_pattern=r"[ ]?")
 
@@ -304,14 +260,24 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
                  extra={"markup": True})
         log.info(kdma_dialog_texts[0])
 
-        # List of {score:int, reasoning:str} with length = num_samples*len(choices)*len(target_kdmas)
+        # List of {choice: {score:int, reasoning:str}, ...} with length = num_samples*len(target_kdmas)
         kdma_score_responses = self.run_in_batches(kdma_score_generator, kdma_dialog_texts, batch_size)
+        # Reshape to matrix of num_samples x len(target_kdmas)
+        kdma_score_responses = [kdma_score_responses[i:i+len(target_kdmas)] for i in range(0,len(kdma_score_responses),len(target_kdmas))]
 
         log.info("[bold]*KDMA SCORE PREDICTION RESPONSE*[/bold]",
                  extra={"markup": True})
         log.info(kdma_score_responses, extra={"highlighter": JSON_HIGHLIGHTER})
 
-        return kdma_score_responses, response_keys
+        # Add responses to predictions
+        for sample_idx in range(num_samples):
+            for kdma_idx in range(len(target_kdmas)):
+                kdma_prediction = kdma_score_responses[sample_idx][kdma_idx]
+                kdma_key = target_kdmas[kdma_idx]['kdma']
+                for choice in choices:
+                    predictions[sample_idx][choice][kdma_key] = kdma_prediction[choice]
+
+        return predictions
 
 
     # TODO - create a separate class for distribution matching approaches
@@ -332,7 +298,7 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
             average_predictions = {}
             for target_kdma in target_kdmas:
                 kdma = target_kdma['kdma']
-                samples = predicted_kdma_values[choice][kdma]['scores']
+                samples = predicted_kdma_values[choice][kdma]['score']
                 average_predictions[kdma] = (sum(samples) / len(samples)) / 10 # /10 because predictions are 0-10, but targets are 0-1
             average_predictions_for_each_choice.append(average_predictions)
 
@@ -363,9 +329,9 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
         selected_choice = choices[choice_idx]
 
         # If outcomes were predicted, add to reasoning
-        if predicted_kdma_values[selected_choice]['outcomes']:
+        if predicted_kdma_values[selected_choice]['predicted_outcome'][0] is not None:
             reasoning = 'The predicted outcome for choice ' + selected_choice + ' was: '
-            reasoning += predicted_kdma_values[selected_choice]['outcomes'][0]
+            reasoning += predicted_kdma_values[selected_choice]['predicted_outcome'][0]
         else:
             reasoning = ''
         # Add average predicted KDMA acores to reasoning
@@ -420,41 +386,32 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
                 target_kdmas[kdma_idx]['description'] = kdma_descriptions[kdma]['description']
                 target_kdmas[kdma_idx]['score_examples'] = kdma_descriptions[kdma]['score_examples']
 
-        predicted_kdma_values = {}      # Dictionary to save output for each choice to
-        for choice in choices:
-            predicted_kdma_values[choice] = {
-                'outcomes':[]           # List to add sampled outcome predictions to
-            }
-            for target_kdma in target_kdmas:
-                predicted_kdma_values[choice][target_kdma['kdma']] = {
-                    'scores':[],        # List to add sampled kdma scores to
-                    'reasonings':[]     # List to add sampled kdma score reasonings to
-                }
 
         # Predict outcome of selecting each choice - optional
         if predict_outcomes:
-            predicted_outcomes = self.sample_outcome_predictions(scenario_description, choices, \
+            predictions = self.sample_outcome_predictions(scenario_description, choices, \
                                                                  num_samples, generator_batch_size)
-            # Save outcome predictions
-            for sample in predicted_outcomes:
-                for idx in range(len(choices)):
-                    predicted_kdma_values[choices[idx]]['outcomes'].append(sample[idx]['predicted_outcome'])
         else:
-            predicted_outcomes = None
+            # set predicted outcomes to none
+            predictions = []
+            for _ in range(num_samples):
+                sample = {}
+                for choice in choices:
+                    sample[choice] = {}
+                    sample[choice]['predicted_outcome'] = None
+                predictions.append(sample)
+
 
         # Predict kdma values
-        kdma_score_responses, response_keys = self.sample_kdma_score_predictions(scenario_description, choices, \
-                                                                                target_kdmas, predicted_outcomes, \
-                                                                                num_samples, generator_batch_size, \
-                                                                                kdma_score_examples, \
-                                                                                incontext_settings=kwargs.get("incontext", {}))
-        # Save predictions
-        for idx in range(len(kdma_score_responses)):
-            response = kdma_score_responses[idx]
-            kdma = response_keys[idx]['kdma']
-            choice = response_keys[idx]['choice']
-            predicted_kdma_values[choice][kdma]['scores'].append(response['score'])
-            predicted_kdma_values[choice][kdma]['reasonings'].append(response['reasoning'])
+        predictions = self.sample_kdma_score_predictions(scenario_description, choices, \
+                                                        target_kdmas, predictions, \
+                                                        num_samples, generator_batch_size, \
+                                                        kdma_score_examples, \
+                                                        incontext_settings=kwargs.get("incontext", {}))
+
+        # Reformat predictions from a list of sampled dictionaries 
+        # to a single dictionary with values that are a list of samples
+        predicted_kdma_values = merge_samples(predictions)
 
         # Regress best choice
         if distribution_matching == 'average':

@@ -1,5 +1,5 @@
 instance:
-  _target_: align_system.algorithms.outlines_regression_adm.OutlinesTransformersRegressionADM
+  _target_: align_system.algorithms.outlines_regression_adm_comparative.OutlinesTransformersComparativeRegressionADM
 
   model_name: mistralai/Mistral-7B-Instruct-v0.2
   baseline: false
@@ -9,3 +9,4 @@ inference_kwargs:
   predict_outcomes: true
   distribution_matching: average
   generator_batch_size: 5
+  kdma_score_example: false

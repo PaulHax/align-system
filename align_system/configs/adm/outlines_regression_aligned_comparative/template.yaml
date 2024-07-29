@@ -1,0 +1,5 @@
+defaults:
+  - outlines_regression_aligned_comparative
+
+inference_kwargs:
+  kdma_score_examples: True
