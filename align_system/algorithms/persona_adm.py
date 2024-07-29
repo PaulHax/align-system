@@ -20,20 +20,11 @@ from align_system.algorithms.llama_2_single_kdma_adm import (
     Llama2SingleKDMAADM,
     build_multiple_choice_dialog,
 )
+from align_system.algorithms.lib.persona.types import Backstory
+from align_system.algorithms.lib.persona.provider import KDMA_TO_PROBE_MAPPING
 
 
 # Some types
-class Probe(TypedDict):
-    probe: str
-    probe_prompt: str
-    response: str
-    response_value: float
-
-
-class Backstory(TypedDict):
-    backstory: str
-    probes: List[Probe]
-
 
 class ChoiceInfo(TypedDict):
     reasoning: str
@@ -59,15 +50,6 @@ def log_dialog(dialog):
 
         logger.debug(f"[bold {color}]**{e.get('role')}**[/bold {color}]", extra={"markup": True})
         logger.debug(f"[{color}]{e.get('content')}[/{color}]", extra={"markup": True, "highlighter": None})
-
-
-
-KDMA_TO_PROBE_MAPPING = {
-    'MoralDesert': 'moral_judgment',
-    'maximization': 'maximization',
-    'Moral judgement': 'moral_judgment',
-}
-
 
 
 class PersonaADM(AlignedDecisionMaker, ActionBasedADM):

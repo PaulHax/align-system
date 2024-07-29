@@ -14,6 +14,19 @@ from align_system.algorithms.lib.persona.templates import BACKSTORY_ASSISTANT_PR
 KDMA_TO_PROBE_MAPPING = {
     'MoralDesert': 'moral_judgment',
     'maximization': 'maximization',
+    'Moral judgement': 'moral_judgment',
+    'ingroup_bias': 'ingroup_bias',
+    'IngroupBias': 'ingroup_bias',
+    'Ingroup bias': 'ingroup_bias',
+    'value_of_life': 'value_of_life',
+    'ValueOfLife': 'value_of_life',
+    'Value of life': 'value_of_life',
+    'perceived_quantity_of_lives_saved': 'value_of_life',
+    'PerceivedQuantityOfLivesSaved': 'value_of_life',
+    'Perceived quantity of lives saved': 'value_of_life',
+    'quality_of_life': 'quality_of_life',
+    'QualityOfLife': 'quality_of_life',
+    'Quality of life': 'quality_of_life',
 }
 
 logger = logging.getLogger(__name__)
