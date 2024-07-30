@@ -347,20 +347,22 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
         return selected_choice
 
 
-    def kde_js_distribution_matching(self, predicted_kdma_values, target_kdmas, norm='globalnorm'):
+    def kde_js_distribution_matching(self, predicted_kdma_values, target_kdmas, kde_norm):
         '''.
         Returns the selected choice and reasoning.
         '''
         # For now only align to first target
         target_kdma = target_kdmas[0] # TODO extend to multi-KDMA target scenario
         
-        target_kde = kde_utils.load_kde(target_kdma, norm)
+        target_kde = kde_utils.load_kde(target_kdma, kde_norm)
 
         # Get predicted KDE for each choice and get distance to target
         min_distance = float('inf')
         min_distance_choice = None
         for choice in predicted_kdma_values.keys():
             predicted_samples = predicted_kdma_values[choice][target_kdma.kdma]['score']
+            # predicted scores are between 0-10 and target kdes are between 0-1
+            predicted_samples = [score/10 for score in predicted_samples]
             predicted_kde = kde_utils.get_kde_from_samples(predicted_samples)
             distance = kde_utils.js_distance(target_kde, predicted_kde, 100)
             if distance <= min_distance:
@@ -377,6 +379,7 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
                                 num_samples=1,
                                 predict_outcomes=False,
                                 distribution_matching='average',
+                                kde_norm='globalnorm',
                                 generator_batch_size=5,
                                 kdma_descriptions_map='align_system/prompt_engineering/kdma_descriptions.yml',
                                 kdma_score_examples=False,
@@ -453,12 +456,12 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
             if distribution_matching == 'sample':
                 # set scalar value targets to a KDE sample
                 for kdma_idx in range(len(target_kdmas)):
-                    target_kde = kde_utils.load_kde(target_kdmas[kdma_idx], norm='globalnorm')
+                    target_kde = kde_utils.load_kde(target_kdmas[kdma_idx], kde_norm)
                     target_kdmas[kdma_idx]['value'] = target_kde.sample(1)
                 selected_choice = self.average_scalar_matching(predicted_kdma_values, target_kdmas)
             elif distribution_matching == 'js_divergence':
                 # Convert predicted samples to KDE and compute JS divergence
-                selected_choice = self.kde_js_distribution_matching(predicted_kdma_values, target_kdmas)
+                selected_choice = self.kde_js_distribution_matching(predicted_kdma_values, target_kdmas, kde_norm)
             else:
                 raise RuntimeError(distribution_matching, "distribution matching function unrecognized.")
         else:
