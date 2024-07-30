@@ -16,6 +16,7 @@ from swagger_client.models import (
 )
 
 from align_system.utils import logging
+from align_system.utils import kde_utils
 from align_system.utils.hydrate_state import hydrate_scenario_state
 from align_system.algorithms.outlines_adm import OutlinesTransformersADM
 from align_system.algorithms.outlines_regression_adm import get_chain_of_thought_reasoning
@@ -280,11 +281,26 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
         return predictions
 
 
+    # TODO - this could be improved
+    def get_selected_choice_reasoning(self, selected_choice, predicted_kdma_values, target_kdmas):
+        # If outcomes were predicted, add first one to reasoning
+        if predicted_kdma_values[selected_choice]['predicted_outcome'][0] is not None:
+            reasoning = 'The predicted outcome for choice ' + selected_choice + ' was: '
+            reasoning += predicted_kdma_values[selected_choice]['predicted_outcome'][0]
+        else:
+            reasoning = ''
+        # Add predicted KDMA scores to reasoning
+        for target_kdma in target_kdmas:
+            reasoning += ' The predicted scores for ' + target_kdma['name'] + ' were ' + \
+                            str(predicted_kdma_values[selected_choice][target_kdma['kdma']]['score']) + '.'
+        return reasoning
+
+
     # TODO - create a separate class for distribution matching approaches
     # (each with a __call__ method) so we can specify the class target and
     # initialize in our hydra configs.
 
-    def average_distribution_matching(self, predicted_kdma_values, target_kdmas):
+    def average_scalar_matching(self, predicted_kdma_values, target_kdmas):
         '''
         Selects a choice by first averaging score across samples,
         then selecting the one with minimal MSE to the target.
@@ -328,20 +344,31 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
                 choice_idx = i
         selected_choice = choices[choice_idx]
 
-        # If outcomes were predicted, add to reasoning
-        if predicted_kdma_values[selected_choice]['predicted_outcome'][0] is not None:
-            reasoning = 'The predicted outcome for choice ' + selected_choice + ' was: '
-            reasoning += predicted_kdma_values[selected_choice]['predicted_outcome'][0]
-        else:
-            reasoning = ''
-        # Add average predicted KDMA acores to reasoning
-        for target_kdma in target_kdmas:
-            reasoning += ' The average predcited score for ' + target_kdma['name'] + ' was ' + \
-                            str(average_predictions_for_each_choice[choice_idx][target_kdma['kdma']]) + '.'
-        # TODO - could improve returned reasoning
+        return selected_choice
 
-        return selected_choice, reasoning
 
+    def kde_js_distribution_matching(self, predicted_kdma_values, target_kdmas, norm='globalnorm'):
+        '''.
+        Returns the selected choice and reasoning.
+        '''
+        # For now only align to first target
+        target_kdma = target_kdmas[0] # TODO extend to multi-KDMA target scenario
+        
+        target_kde = kde_utils.load_kde(target_kdma, norm)
+
+        # Get predicted KDE for each choice and get distance to target
+        min_distance = float('inf')
+        min_distance_choice = None
+        for choice in predicted_kdma_values.keys():
+            predicted_samples = predicted_kdma_values[choice][target_kdma.kdma]['score']
+            predicted_kde = kde_utils.get_kde_from_samples(predicted_samples)
+            distance = kde_utils.js_distance(target_kde, predicted_kde, 100)
+            if distance <= min_distance:
+                min_distance = distance
+                min_distance_choice = choice
+        selected_choice = min_distance_choice
+
+        return selected_choice
 
     def top_level_choose_action(self,
                                 scenario_state,
@@ -413,13 +440,29 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
         # to a single dictionary with values that are a list of samples
         predicted_kdma_values = merge_samples(predictions)
 
-        # Regress best choice
-        if distribution_matching == 'average':
+        # Select best choice
+        
+        # If we have a scalar value target, use average distribution matching
+        if target_kdmas[0].value is not None:
             # Averages over predicted score samples and selects choice with minimum MSE to target
-            selected_choice, first_justification = self.average_distribution_matching(predicted_kdma_values, target_kdmas)
+            selected_choice = self.average_scalar_matching(predicted_kdma_values, target_kdmas)
             # Currently returning the reasoning associated with the first sample for the selected choice
+        
+        # Else is we have KDE targets, use distribution_matching param to select choice
+        elif hasattr(target_kdmas[0], 'kdes') and target_kdmas[0].kdes is not None:
+            if distribution_matching == 'sample':
+                # set scalar value targets to a KDE sample
+                for kdma_idx in range(len(target_kdmas)):
+                    target_kde = kde_utils.load_kde(target_kdmas[kdma_idx], norm='globalnorm')
+                    target_kdmas[kdma_idx]['value'] = target_kde.sample(1)
+                selected_choice = self.average_scalar_matching(predicted_kdma_values, target_kdmas)
+            elif distribution_matching == 'js_divergence':
+                # Convert predicted samples to KDE and compute JS divergence
+                selected_choice = self.kde_js_distribution_matching(predicted_kdma_values, target_kdmas)
+            else:
+                raise RuntimeError(distribution_matching, "distribution matching function unrecognized.")
         else:
-            raise RuntimeError("Distribution matching function not recognized.")
+            raise RuntimeError("Alignment target does not have an associated value or KDEs.")
 
         log.info("[bold]*STRUCTURED RESPONSE*[/bold]",
                  extra={"markup": True})
@@ -427,7 +470,7 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
 
         selected_choice_idx = choices.index(selected_choice)
         action_to_take = available_actions[selected_choice_idx]
-        action_to_take.justification = first_justification
+        action_to_take.justification = self.get_selected_choice_reasoning(selected_choice, predicted_kdma_values, target_kdmas)
 
         # Set up simple diaolg to return for follow-ups
         alignment_system_prompt = regression_alignment_system_prompt(target_kdmas)
