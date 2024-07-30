@@ -22,6 +22,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * Added alignment targets for SoarTech scenarios for the dry run evaluation
 * Added some random ADM experiments for the SoarTech dry run scenarios
 * Added `intend_action` to the `ActionBasedScenarioInterface` to comply with TA3 server updates
+* Added functionality in comparative regression for aligning to KDE targets
 
 ### Fixed
 
