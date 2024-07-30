@@ -140,16 +140,26 @@ class TA3CACIActionBasedScenario(ActionBasedScenarioInterface):
         return self.connection.get_available_actions(
             session_id=self.session_id, scenario_id=self.scenario.id)
 
-    def take_action(self, action):
+    def _take_or_intend_action(self, action, take_or_intend):
         # Convert to proper 'Action' object prior to submission
         if isinstance(action, dict):
             action = Action(**action)
 
-        updated_state = self.connection.take_action(
+        updated_state = take_or_intend(
             session_id=self.session_id,
             body=action)
 
         return updated_state
+
+    def intend_action(self, action):
+        return self._take_or_intend_action(
+            action, self.connection.intend_action
+        )
+
+    def take_action(self, action):
+        return self._take_or_intend_action(
+            action, self.connection.take_action
+        )
 
     def get_state(self):
         return self.connection.get_scenario_state(

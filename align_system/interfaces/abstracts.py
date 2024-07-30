@@ -64,6 +64,10 @@ class ActionBasedScenarioInterface(ABC):
         pass
 
     @abstractmethod
+    def intend_action(self):
+        pass
+
+    @abstractmethod
     def take_action(self):
         pass
 

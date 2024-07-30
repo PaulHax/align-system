@@ -7,7 +7,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
-* Updated KDMA descriptions and made the KDMA description yml file configurable 
+* Updated KDMA descriptions and made the KDMA description yml file configurable
 
 ### Added
 
@@ -19,12 +19,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * Added incontext learning with chain of thought reasoning for regression and comparative regression ADMs
 * Added some Kaleido hybrid experiments for the ADEPT dry run scenarios
 * Added Persona based ADM from UCB (based off single kdma adm)
+* Added alignment targets for SoarTech scenarios for the dry run evaluation
+* Added some random ADM experiments for the SoarTech dry run scenarios
+* Added `intend_action` to the `ActionBasedScenarioInterface` to comply with TA3 server updates
 
 ### Fixed
 
 * Fixed issue for running in batches with batch size in outlines ADMs
 * Fixed character selection to use the `character_id` associated with the selected action when available, otherwise send a follow up prompt
-  
+
 ## 0.4.1
 
 ### Changed

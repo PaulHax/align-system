@@ -11,5 +11,6 @@ loglevel: "EXPLAIN"
 save_log: true
 save_input_output: true
 save_scoring_output: true
+save_alignment_targets: false
 
 align_to_target: False

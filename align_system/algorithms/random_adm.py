@@ -22,10 +22,14 @@ class RandomADM(ActionBasedADM):
                                           ActionTypeEnum.CHECK_PULSE,
                                           ActionTypeEnum.CHECK_RESPIRATION,
                                           ActionTypeEnum.MOVE_TO_EVAC,
-                                          ActionTypeEnum.TAG_CHARACTER}:
+                                          ActionTypeEnum.TAG_CHARACTER,
+                                          ActionTypeEnum.CHECK_BLOOD_OXYGEN}:
             if action_to_take.character_id is None:
-                action_to_take.character_id = random.choice(
-                    [c.id for c in scenario_state.characters])
+                action_to_take.character_id = random.choice([
+                    c.id
+                    for c in scenario_state.characters
+                    if hasattr(c, "unseen") and not c.unseen
+                ])
 
         if action_to_take.action_type == ActionTypeEnum.APPLY_TREATMENT:
             if action_to_take.parameters is None:
@@ -45,6 +49,14 @@ class RandomADM(ActionBasedADM):
             if 'category' not in action_to_take.parameters:
                 action_to_take.parameters['category'] = random.choice(
                     get_swagger_class_enum_values(CharacterTagEnum))
+
+        # Action requires an aid ID
+        elif action_to_take.action_type == ActionTypeEnum.MOVE_TO_EVAC:
+            if "aid_id" not in action_to_take.parameters:
+                action_to_take.parameters["aid_id"] = random.choice([
+                    aid.id
+                    for aid in scenario_state.environment.decision_environment.aid
+                ])
 
         # Required since Dry Run Evaluation
         action_to_take.justification = "Random choice"

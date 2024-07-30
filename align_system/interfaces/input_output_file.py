@@ -177,7 +177,7 @@ class InputOutputFileScenario(ActionBasedScenarioInterface):
     def get_available_actions(self):
         return self.current_actions
 
-    def take_action(self, action):
+    def _take_or_intend_action(self, action):
         self.action_taken_callback(self.scenario_id, self.current_actions, action)
 
         if len(self.scenario_records) > 0:
@@ -186,6 +186,13 @@ class InputOutputFileScenario(ActionBasedScenarioInterface):
         else:
             self.current_state.scenario_complete = True
             return self.current_state
+
+    def intend_action(self, action):
+        return self._take_or_intend_action(action)
+
+    def take_action(self, action):
+        return self._take_or_intend_action(action)
+
 
     def get_state(self):
         return self.current_state
