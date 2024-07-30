@@ -285,14 +285,14 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
     def get_selected_choice_reasoning(self, selected_choice, predicted_kdma_values, target_kdmas):
         # If outcomes were predicted, add first one to reasoning
         if predicted_kdma_values[selected_choice]['predicted_outcome'][0] is not None:
-            reasoning = 'The predicted outcome for choice ' + selected_choice + ' was: '
+            reasoning = f'The predicted outcome for choice {selected_choice} was: '
             reasoning += predicted_kdma_values[selected_choice]['predicted_outcome'][0]
         else:
             reasoning = ''
         # Add predicted KDMA scores to reasoning
         for target_kdma in target_kdmas:
-            reasoning += ' The predicted scores for ' + target_kdma['name'] + ' were ' + \
-                            str(predicted_kdma_values[selected_choice][target_kdma['kdma']]['score']) + '.'
+            reasoning += f' The predicted scores for {target_kdma['name']} were '
+            reasoning += f'{str(predicted_kdma_values[selected_choice][target_kdma['kdma']]['score'])}.'
         return reasoning
 
 
@@ -303,8 +303,8 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
     def average_scalar_matching(self, predicted_kdma_values, target_kdmas):
         '''
         Selects a choice by first averaging score across samples,
-        then selecting the one with minimal MSE to the target.
-        Returns the selected choice and reasoning.
+        then selecting the one with minimal MSE to the scalar target.
+        Returns the selected choice.
         '''
         # Get average of predicted scores
         average_predictions_for_each_choice = []
@@ -349,7 +349,8 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
 
     def kde_js_distribution_matching(self, predicted_kdma_values, target_kdmas, kde_norm):
         '''.
-        Returns the selected choice and reasoning.
+        Creates predicted KDEs for each choice using sampled score predictions
+        Returns the selected choice with minimum JS divergence to target KDE
         '''
         # For now only align to first target
         target_kdma = target_kdmas[0] # TODO extend to multi-KDMA target scenario
@@ -410,7 +411,7 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
                     target_kdmas[kdma_idx] = dict(target_kdmas[kdma_idx])
             kdma = target_kdmas[kdma_idx]['kdma']
             if kdma not in kdma_descriptions:
-                raise RuntimeError("Missing target kdma description.")
+                raise RuntimeError(f'Missing target kdma description for {kdma}')
             else:
                 target_kdmas[kdma_idx]['name'] = kdma_descriptions[kdma]['name']
                 target_kdmas[kdma_idx]['description'] = kdma_descriptions[kdma]['description']
@@ -446,6 +447,7 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
         # Select best choice
         
         # If we have a scalar value target, use average distribution matching
+        # TODO extend logic to multi-KDMA scenario with mix of KDE and scalar targets
         if target_kdmas[0].value is not None:
             # Averages over predicted score samples and selects choice with minimum MSE to target
             selected_choice = self.average_scalar_matching(predicted_kdma_values, target_kdmas)
@@ -454,7 +456,7 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
         # Else is we have KDE targets, use distribution_matching param to select choice
         elif hasattr(target_kdmas[0], 'kdes') and target_kdmas[0].kdes is not None:
             if distribution_matching == 'sample':
-                # set scalar value targets to a KDE sample
+                # set scalar value targets to a random KDE sample
                 for kdma_idx in range(len(target_kdmas)):
                     target_kde = kde_utils.load_kde(target_kdmas[kdma_idx], kde_norm)
                     target_kdmas[kdma_idx]['value'] = target_kde.sample(1)
