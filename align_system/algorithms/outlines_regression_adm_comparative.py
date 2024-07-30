@@ -378,7 +378,7 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
                                 alignment_target,
                                 num_samples=1,
                                 predict_outcomes=False,
-                                distribution_matching='average',
+                                distribution_matching='sample',
                                 kde_norm='globalnorm',
                                 generator_batch_size=5,
                                 kdma_descriptions_map='align_system/prompt_engineering/kdma_descriptions.yml',
