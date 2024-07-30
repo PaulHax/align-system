@@ -92,11 +92,15 @@ class OracleADM(ActionBasedADM):
                                           ActionTypeEnum.CHECK_PULSE,
                                           ActionTypeEnum.CHECK_RESPIRATION,
                                           ActionTypeEnum.MOVE_TO_EVAC,
-                                          ActionTypeEnum.TAG_CHARACTER}:
+                                          ActionTypeEnum.TAG_CHARACTER,
+                                          ActionTypeEnum.CHECK_BLOOD_OXYGEN}:
             # TODO: Is there a good heuristic for what character we should apply this to?
             if action_to_take.character_id is None:
-                action_to_take.character_id = random.choice(
-                    [c.id for c in scenario_state.characters])
+                action_to_take.character_id = random.choice([
+                    c.id
+                    for c in scenario_state.characters
+                    if hasattr(c, "unseen") and not c.unseen
+                ])
 
         if action_to_take.action_type == ActionTypeEnum.APPLY_TREATMENT:
             if action_to_take.parameters is None:
@@ -155,9 +159,9 @@ class OracleADM(ActionBasedADM):
                     case 'Asthmatic':
                         return None
                     case _:
-                        raise ValueError(f"Unknown injury type: {injury_name}")
+                        log.warn(f"Unknown injury type: {injury_name}. Choosing random treatment")
 
-                return None
+                return random.choice(poss_treatments)
 
             while len(poss_characters) > 0:
                 # Select a random character
@@ -213,4 +217,12 @@ class OracleADM(ActionBasedADM):
                 action_to_take.parameters['category'] = random.choice(
                     get_swagger_class_enum_values(CharacterTagEnum))
 
+        elif action_to_take.action_type == ActionTypeEnum.MOVE_TO_EVAC:
+            if "aid_id" not in action_to_take.parameters:
+                action_to_take.parameters["aid_id"] = random.choice([
+                    aid.id
+                    for aid in scenario_state.environment.decision_environment.aid
+                ])
+
+        action_to_take.justification = "Looked at scores"
         return action_to_take

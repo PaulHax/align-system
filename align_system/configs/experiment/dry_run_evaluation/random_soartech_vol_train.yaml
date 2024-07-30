@@ -1,0 +1,13 @@
+# @package _global_
+defaults:
+  - override /adm: random
+  - override /interface: ta3
+
+interface:
+  api_endpoint: "http://127.0.0.1:8089"
+  session_type: soartech
+  scenario_ids:
+    - vol-dre-1-train
+  training_session: true
+
+align_to_target: true

@@ -2,6 +2,7 @@ import json
 from copy import deepcopy
 import atexit
 import os
+import yaml
 
 from rich.logging import RichHandler
 from rich.console import Console
@@ -40,6 +41,11 @@ def main(cfg: DictConfig) -> None:
     save_alignment_score_to_path = None
     if cfg.save_scoring_output:
         save_alignment_score_to_path = os.path.join(output_dir, "scores.json")
+
+    save_alignment_targets_to_path = None
+    if cfg.save_alignment_targets:
+        save_alignment_targets_to_path = os.path.join(output_dir, "targets")
+        os.mkdir(save_alignment_targets_to_path)
 
     # Set log level on root logger (such that child loggers respect
     # the set log level)
@@ -117,6 +123,12 @@ def main(cfg: DictConfig) -> None:
             log.info('Alignment target is `None`')
         else:
             log.info(alignment_target)
+            if save_alignment_targets_to_path is not None:
+                alignment_target_path = os.path.join(save_alignment_targets_to_path, f"{alignment_target.id}.yaml")
+
+                with open(alignment_target_path, "w") as f:
+                    yaml.dump(alignment_target.to_dict(), f)
+
 
         current_state = scenario.get_state()
         scenario_complete = current_state.scenario_complete
@@ -207,6 +219,7 @@ def main(cfg: DictConfig) -> None:
             elif len(available_actions_filtered) == 1:
                 log.info("** Choosing only available (filtered) action")
                 action_to_take = available_actions_filtered[0]
+                action_to_take.justification = "Only available (filtered) action"
             else:
                 # Passing in a copy of available filtered actions to
                 # prevent ADMs from modifying the originals (should
@@ -242,7 +255,14 @@ def main(cfg: DictConfig) -> None:
                                               'action': action_to_take.to_dict()}})
 
             last_state = current_state
-            current_state = scenario.take_action(action_to_take)
+            try:
+                if hasattr(action_to_take, "intent_action") and action_to_take.intent_action:
+                    current_state = scenario.intend_action(action_to_take)
+                else:
+                    current_state = scenario.take_action(action_to_take)
+            except Exception as e:
+                log.info(action_to_take)
+                raise e
 
             # Check that the scenario state has really changed
             # Want to restrict actions that have already been taken that
