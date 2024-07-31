@@ -480,43 +480,58 @@ class OutlinesTransformersADM(ActionBasedADM):
                 selected_character['brief_reasoning'] = action_to_take.justification
 
         if action_to_take.action_type == ActionTypeEnum.APPLY_TREATMENT:
-            valid_treatment_locations = get_swagger_class_enum_values(InjuryLocationEnum)
-            available_supplies = [s for s in scenario_state.supplies if s.quantity > 0]
+            # Use follow up prompt to define treatment and/or location if neccesary
+            if action_to_take.parameters is None or 'treatment' not in action_to_take.parameters or 'location' not in action_to_take.parameters:
 
-            dialog.append({'role': 'assistant',
-                           'content': '{}  {} should receive the action.'.format(
-                               selected_character['brief_reasoning'],
-                               selected_character['character_choice'])})
-            dialog.append({'role': 'user',
-                           'content': followup_clarify_treatment(
-                               scenario_state.characters[selected_character_idx],
-                               available_supplies)})
+                # Get valid injury locations for the selected character
+                valid_treatment_locations = []
+                for injury in scenario_state.characters[selected_character_idx].injuries:
+                    valid_treatment_locations.append(injury.location)
 
-            dialog_text = self.dialog_to_prompt(dialog)
+                # If there is only one treatment location and we have the treatment, we don't need a follow-up
+                if len(valid_treatment_locations) == 1 and action_to_take.parameters is not None and 'treatment' in action_to_take.parameters:
+                    action_to_take.parameters['location'] = valid_treatment_locations[0]
 
-            generator = outlines.generate.json(
-                self.model,
-                treatment_choice_json_schema(
-                    json.dumps([s.type for s in available_supplies]),
-                    json.dumps(valid_treatment_locations)),
-                sampler=self.sampler,
-                whitespace_pattern=r"[ ]?")
+                # If there are multiple treatment locations and/or we are missing the treatment, use follow-up
+                else:
+                    available_supplies = [s for s in scenario_state.supplies if s.quantity > 0]
 
-            log.info("[bold]*DIALOG PROMPT*[/bold]",
-                     extra={"markup": True})
-            log.info(dialog_text)
+                    dialog.append({'role': 'assistant',
+                                   'content': '{}  {} should receive the action.'.format(
+                                       selected_character['brief_reasoning'],
+                                       selected_character['character_choice'])})
+                    dialog.append({'role': 'user',
+                                   'content': followup_clarify_treatment(
+                                       scenario_state.characters[selected_character_idx],
+                                       available_supplies)})
 
-            selected_treatment = generator(dialog_text)
+                    dialog_text = self.dialog_to_prompt(dialog)
 
-            log.info("[bold]*STRUCTURED RESPONSE*[/bold]",
-                     extra={"markup": True})
-            log.info(selected_treatment, extra={"highlighter": JSON_HIGHLIGHTER})
+                    generator = outlines.generate.json(
+                        self.model,
+                        treatment_choice_json_schema(
+                            json.dumps([s.type for s in available_supplies]),
+                            json.dumps(valid_treatment_locations)),
+                        sampler=self.sampler,
+                        whitespace_pattern=r"[ ]?")
 
-            if action_to_take.parameters is None:
-                action_to_take.parameters = {}
+                    log.info("[bold]*DIALOG PROMPT*[/bold]",
+                             extra={"markup": True})
+                    log.info(dialog_text)
 
-            action_to_take.parameters['treatment'] = selected_treatment['supplies_to_use']
-            action_to_take.parameters['location'] = selected_treatment['treatment_location']
+                    selected_treatment = generator(dialog_text)
+
+                    log.info("[bold]*STRUCTURED RESPONSE*[/bold]",
+                             extra={"markup": True})
+                    log.info(selected_treatment, extra={"highlighter": JSON_HIGHLIGHTER})
+
+                    # Use follow-up response to define only the missing fields
+                    if action_to_take.parameters is None:
+                        action_to_take.parameters = {}
+                    if 'treatment' not in action_to_take.parameters:
+                        action_to_take.parameters['treatment'] = selected_treatment['supplies_to_use']
+                    if 'location' not in action_to_take.parameters:
+                        action_to_take.parameters['location'] = selected_treatment['treatment_location']
 
         if action_to_take.action_type == ActionTypeEnum.TAG_CHARACTER:
             valid_tags = get_swagger_class_enum_values(CharacterTagEnum)
