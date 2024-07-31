@@ -3,3 +3,5 @@ instance:
 
   probabilistic: false
   upweight_missing_kdmas: false
+  distribution_matching: sample
+  kde_norm: globalnorm

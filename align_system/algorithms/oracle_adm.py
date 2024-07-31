@@ -11,6 +11,7 @@ from swagger_client.models import (
 from align_system.utils import logging
 from align_system.algorithms.abstracts import ActionBasedADM
 from align_system.utils import get_swagger_class_enum_values
+from align_system.utils import distribution_matching_utils
 
 log = logging.getLogger(__name__)
 
@@ -50,42 +51,58 @@ class OracleADM(ActionBasedADM):
         # Small epsilon for a perfect (0 distance) match
         return math.sqrt(1/(distance+1e-16))
 
-    def choose_action(self, scenario_state, available_actions, alignment_target, **kwargs):
+    def choose_action(self, scenario_state, available_actions, alignment_target, 
+                      distribution_matching: str='sample', kde_norm='globalnorm', 
+                      **kwargs):
         if available_actions is None or len(available_actions) == 0:
             return None
 
         if alignment_target is None:
             raise ValueError("Oracle ADM needs alignment target")
 
-        # Build out the corresponding kdma_association target dictionary
-        target_kdma_assoc = {
-            target['kdma']: target['value']
-            for target in alignment_target.kdma_values
-        }
+        # Check if targets are scalar
+        scalar_target_kdma_assoc = {}
+        for target in alignment_target.kdma_values:
+            if 'value' in target and target['value'] is not None:
+                scalar_target_kdma_assoc[target['kdma']] = target['value']
 
-        # Weight action choices with distance-based metric
-        inv_dists = [
-            self._inverse_distance(target_kdma_values=target_kdma_assoc, system_kdmas=action.kdma_association)
-            for action in available_actions
-        ]
+        # If scalar targets
+        if scalar_target_kdma_assoc:
+            # Build out the corresponding kdma_association target dictionary
+            target_kdma_assoc = {
+                target['kdma']: target['value']
+                for target in alignment_target.kdma_values
+            }
 
-        # Convert inverse distances to probabilities
-        probs = [inv_dist/sum(inv_dists) for inv_dist in inv_dists]
+            # Weight action choices with distance-based metric
+            inv_dists = [
+                self._inverse_distance(target_kdma_values=target_kdma_assoc, system_kdmas=action.kdma_association)
+                for action in available_actions
+            ]
 
-        if self.probabilistic:
-            action_to_take = np.random.choice(available_actions, p=probs)
-        else:  # Always choose (one of the) max probability action
-            max_prob = max(probs)
-            max_actions = [idx for idx, p in enumerate(probs) if p == max_prob]
-            action_to_take = available_actions[random.choice(max_actions)]
+            # Convert inverse distances to probabilities
+            probs = [inv_dist/sum(inv_dists) for inv_dist in inv_dists]
 
-        # Log scoring results
-        results = pd.DataFrame([
-            (action.unstructured, prob)
-            for action, prob in zip(available_actions, probs)
-        ], columns=["choice", "probability"])
-        results = results.sort_values(by=["probability"], ascending=False)
-        log.explain(results)
+            if self.probabilistic:
+                action_to_take = np.random.choice(available_actions, p=probs)
+            else:  # Always choose (one of the) max probability action
+                max_prob = max(probs)
+                max_actions = [idx for idx, p in enumerate(probs) if p == max_prob]
+                action_to_take = available_actions[random.choice(max_actions)]
+
+            # Log scoring results
+            results = pd.DataFrame([
+                (action.unstructured, prob)
+                for action, prob in zip(available_actions, probs)
+            ], columns=["choice", "probability"])
+            results = results.sort_values(by=["probability"], ascending=False)
+            log.explain(results)
+        # If KDE targets
+        else:
+            if distribution_matching == 'sample':
+                action_to_take = distribution_matching_utils.match_to_target_kde_sample(alignment_target, available_actions, kde_norm)
+            else:
+                raise RuntimeError(distribution_matching, "distribution matching function unrecognized.")
 
         # Action requires a character ID
         if action_to_take.action_type in {ActionTypeEnum.CHECK_ALL_VITALS,
