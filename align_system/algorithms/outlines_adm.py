@@ -449,7 +449,7 @@ class OutlinesTransformersADM(ActionBasedADM):
                                'content': followup_clarify_character(scenario_state)})
                 dialog_text = self.dialog_to_prompt(dialog)
 
-                characters = [c.name for c in scenario_state.characters]
+                characters = [c.name for c in scenario_state.characters if not c.unseen]
 
                 generator = outlines.generate.json(
                     self.model,
@@ -570,5 +570,15 @@ class OutlinesTransformersADM(ActionBasedADM):
                 action_to_take.parameters = {}
 
             action_to_take.parameters['category'] = selected_tag['triage_tag']
+
+        # Set aid_id for MOVE_TO_EVAC if missing
+        if action_to_take.action_type == ActionTypeEnum.MOVE_TO_EVAC and "aid_id" not in action_to_take.parameters:
+            valid_aids = scenario_state.environment.decision_environment.aid
+            # If there is only one option, we don't need a follow-up
+            if len(valid_aids) == 1:
+                action_to_take.parameters["aid_id"] = valid_aids[0].id
+            else:
+                # TODO - add follow-up
+                action_to_take.parameters["aid_id"] = valid_aids[0].id # temporary fix
 
         return action_to_take
