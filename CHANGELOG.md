@@ -8,6 +8,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 * Updated KDMA descriptions and made the KDMA description yml file configurable
+* No longer overwriting data when followup prompts are used in the Outlines ADM
+* Small updates to Outlines ADM to be compatible with API updates
 
 ### Added
 
