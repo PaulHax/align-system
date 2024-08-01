@@ -104,7 +104,7 @@ class OracleADM(ActionBasedADM):
                 scalar_target_kdma_assoc[target['kdma']] = target['value']
 
         # If scalar targets
-        if scalar_target_kdma_assoc:
+        if len(scalar_target_kdma_association) > 0:
             action_to_take = self.match_to_scalar_target(alignment_target, available_actions)
 
         # If KDE targets
