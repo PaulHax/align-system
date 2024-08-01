@@ -51,23 +51,8 @@ class OracleADM(ActionBasedADM):
         # Small epsilon for a perfect (0 distance) match
         return math.sqrt(1/(distance+1e-16))
 
-    def choose_action(self, scenario_state, available_actions, alignment_target, 
-                      distribution_matching: str='sample', kde_norm='globalnorm', 
-                      **kwargs):
-        if available_actions is None or len(available_actions) == 0:
-            return None
 
-        if alignment_target is None:
-            raise ValueError("Oracle ADM needs alignment target")
-
-        # Check if targets are scalar
-        scalar_target_kdma_assoc = {}
-        for target in alignment_target.kdma_values:
-            if 'value' in target and target['value'] is not None:
-                scalar_target_kdma_assoc[target['kdma']] = target['value']
-
-        # If scalar targets
-        if scalar_target_kdma_assoc:
+    def match_to_scalar_target(self, alignment_target, available_actions):
             # Build out the corresponding kdma_association target dictionary
             target_kdma_assoc = {
                 target['kdma']: target['value']
@@ -97,6 +82,31 @@ class OracleADM(ActionBasedADM):
             ], columns=["choice", "probability"])
             results = results.sort_values(by=["probability"], ascending=False)
             log.explain(results)
+
+            return action_to_take
+
+    def choose_action(self, scenario_state, available_actions, alignment_target,
+                      distribution_matching: str='sample', kde_norm: str='globalnorm',
+                      **kwargs):
+        if available_actions is None or len(available_actions) == 0:
+            return None
+
+        if alignment_target is None:
+            raise ValueError("Oracle ADM needs alignment target")
+
+        # TODO: Currently we assume all targets either have scalar values or KDES,
+        #       Down the line, we should extend to handling multiple targets of mixed types
+
+        # Check if targets are scalar
+        scalar_target_kdma_assoc = {}
+        for target in alignment_target.kdma_values:
+            if 'value' in target and target['value'] is not None:
+                scalar_target_kdma_assoc[target['kdma']] = target['value']
+
+        # If scalar targets
+        if scalar_target_kdma_assoc:
+            action_to_take = self.match_to_scalar_target(alignment_target, available_actions)
+
         # If KDE targets
         else:
             if distribution_matching == 'sample':
