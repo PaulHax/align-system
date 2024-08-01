@@ -199,12 +199,12 @@ def scenario_state_description_dre(scenario_state):
 
 
 @outlines.prompt
-def followup_clarify_character(scenario_state):
+def followup_clarify_character(characters):
     """
     Please clarify which character should receive the action.
 
     CHARACTERS:
-    {% for character in scenario_state.characters %}
+    {% for character in characters %}
     - {{ character.name }}: {{ character.unstructured.rstrip() }}
     {% if character.intent is not none %}
       {{ character.name }}'s intent: {{ character.intent }}
@@ -260,6 +260,32 @@ def followup_clarify_tag(character,
     {% endfor %}
     """
 
+@outlines.prompt
+def followup_clarify_aid(character, available_aids):
+    """
+    Given the casualty description below, please clarify which aid option \
+    the casualty should receive.
+
+    {{ character.unstructured }}
+    INJURIES:
+    {% for injury in character.injuries %}
+    {% if not injury.status == treated_value %}
+    {"injury_name": {{ injury.name }}, "injury_severity": {{ injury.severity }}, "injury_location": {{ injury.location }} }
+    {% endif %}
+    {% endfor %}
+
+    AIDS:
+    {% for aid in available_aids %}
+    - {{ aid.id }}: Available in {{ aid.delay }} minutes.
+    {% if aid.type is not none %}
+      {{ aid.id }}'s type: {{ aid.type }}
+    {% endif %}
+    {% if aid.role is not none %}
+      {{ aid.id }}'s role of medical care available: Level {{ aid.role }}
+    {% endif %}
+    {% endfor %}
+    """
+
 
 @outlines.prompt
 def action_choice_json_schema(choices_json_str):
@@ -305,6 +331,20 @@ def tag_choice_json_schema(tags_json_str):
      "type": "object"}
     '''
 
+@outlines.prompt
+def aid_choice_json_schema(choices_json_str):
+    '''
+    {"$defs": {"AidChoice": {"enum": {{ choices_json_str }},
+       "title": "AidChoice",
+       "type": "string"}},
+     "properties": {"brief_reasoning": {"title": "Brief Reasoning",
+       "type": "string","maxLength":512},
+      "aid_choice": {"$ref": "#/$defs/AidChoice"}},
+     "required": ["brief_reasoning", "aid_choice"],
+     "title": "AidSelection",
+     "type": "object"}
+    '''
+
 
 @outlines.prompt
 def treatment_choice_json_schema(supplies_json_str, locations_json_str):
@@ -329,7 +369,7 @@ def outcomes_system_prompt():
     """
     In a clear and consice way describe the outcomes of answering the \
     given question with the given response. Do not provide additional \
-    advice for the situation. Do not indicate wether or not you agree \
+    advice for the situation. Do not indicate whether or not you agree \
     with the response. Simply analyze the outcomes of the response. \
     Limit your analysis to a single sentence.
     """
@@ -339,7 +379,7 @@ def comparative_outcomes_system_prompt():
     """
     In a clear and consice way describe the outcomes of answering the \
     given question with the given responses. Do not provide additional \
-    advice for the situation. Do not indicate wether or not you agree \
+    advice for the situation. Do not indicate whether or not you agree \
     with the response. Simply analyze the outcomes of the responses. \
     Limit your analysis to a single sentence per response.
     """
@@ -454,8 +494,8 @@ def kdma_score_prediction_system_prompt_with_examples(kdma, kdma_description, kd
     A score of 0 means that the response is a poor characterization of someone \
     who is acting with high {{kdma}}. A score of 10 means that the response \
     is a perfect characterization of someone who is acting with high {{kdma}}.\
-    
-    Here are some examples: 
+
+    Here are some examples:
     {{kdma_score_examples}}
 
     Provide a score and one sentence of reasoning explaining your score.
@@ -474,8 +514,8 @@ def comparative_kdma_score_prediction_system_prompt_with_examples(kdma, kdma_des
     A score of 0 means that the response is a poor characterization of someone \
     who is acting with high {{kdma}}. A score of 10 means that the response \
     is a perfect characterization of someone who is acting with high {{kdma}}.\
-    
-    Here are some examples: 
+
+    Here are some examples:
     {{kdma_score_examples}}
 
     For each response, provide a score and one sentence of reasoning explaining your score.
@@ -492,13 +532,13 @@ def kdma_score_prediction_prompt(situation, choices, choice, outcome, kdma):
     - {{ choice }}
     {% endfor %}
 
-    SELECTED RESPONSE: 
+    SELECTED RESPONSE:
     {{ choice }}
 
     {% if outcome is not none -%}
     Consider the predicted outcome associated with this reponse:
     {{outcome}}
-    
+
     {% endif -%}
 
     Provide a score that indicates how well the selected response characterizes the decision \
@@ -558,7 +598,7 @@ def comparative_kdma_score_prediction_json_schema(choices):
                         "type": "integer",
                         "minimum": 0,
                         "maximum": 10
-                    }                    
+                    }
                 },
                 "required": ["score", "reasoning"]
             }

@@ -32,10 +32,12 @@ from align_system.prompt_engineering.outlines_prompts import (
     low_maximization_system_prompt,
     action_selection_prompt,
     scenario_state_description_1,
+    followup_clarify_aid,
     followup_clarify_character,
     followup_clarify_treatment,
     followup_clarify_tag,
     action_choice_json_schema,
+    aid_choice_json_schema,
     character_choice_json_schema,
     tag_choice_json_schema,
     treatment_choice_json_schema,
@@ -441,19 +443,20 @@ class OutlinesTransformersADM(ActionBasedADM):
                                           ActionTypeEnum.MOVE_TO_EVAC}:
             if action_to_take.character_id == None:
                 # Use follow up prompt to define selected_character
+                characters = [c for c in scenario_state.characters if not c.unseen]
                 dialog.append({'role': 'assistant',
                                'content': '{}  I would choose to {}'.format(
                                    action_to_take.justification,
                                    action_to_take.unstructured)})
                 dialog.append({'role': 'user',
-                               'content': followup_clarify_character(scenario_state)})
+                               'content': followup_clarify_character(characters)})
                 dialog_text = self.dialog_to_prompt(dialog)
 
-                characters = [c.name for c in scenario_state.characters if not c.unseen]
+                character_names = [c.name for c in characters]
 
                 generator = outlines.generate.json(
                     self.model,
-                    character_choice_json_schema(json.dumps(characters)),
+                    character_choice_json_schema(json.dumps(character_names)),
                     sampler=self.sampler,
                     whitespace_pattern=r"[ ]?")
 
@@ -462,13 +465,13 @@ class OutlinesTransformersADM(ActionBasedADM):
                 log.info(dialog_text)
 
                 selected_character = generator(dialog_text)
-                selected_character_idx = characters.index(selected_character['character_choice'])
+                selected_character_idx = character_names.index(selected_character['character_choice'])
 
                 log.info("[bold]*STRUCTURED RESPONSE*[/bold]",
                          extra={"markup": True})
                 log.info(selected_character, extra={"highlighter": JSON_HIGHLIGHTER})
 
-                action_to_take.character_id = scenario_state.characters[selected_character_idx].id
+                action_to_take.character_id = characters[selected_character_idx].id
             else:
                 # Use action_to_take.character_id to define selected_character
                 selected_character = {}
@@ -573,12 +576,53 @@ class OutlinesTransformersADM(ActionBasedADM):
 
         # Set aid_id for MOVE_TO_EVAC if missing
         if action_to_take.action_type == ActionTypeEnum.MOVE_TO_EVAC and "aid_id" not in action_to_take.parameters:
-            valid_aids = scenario_state.environment.decision_environment.aid
-            # If there is only one option, we don't need a follow-up
-            if len(valid_aids) == 1:
-                action_to_take.parameters["aid_id"] = valid_aids[0].id
+            selected_character_dict =\
+                scenario_state.characters[selected_character_idx].to_dict()
+
+            # Limit to the aids that will accept the selected patient
+            available_aids = [
+                aid
+                for aid in scenario_state.environment.decision_environment.aid
+                if (
+                    aid.patients_treated is None or
+                    "military_disposition"  not in selected_character_dict or
+                    selected_character_dict["miliary_disposition"] in aid.patients_treated
+                )
+            ]
+
+            if len(available_aids) == 0:
+                raise RuntimeError("No aids to choose from")
+            elif len(available_aids) == 1:  # If there is only one option, we don't need a follow-up
+                action_to_take.parameters["aid_id"] = available_aids[0].id
             else:
-                # TODO - add follow-up
-                action_to_take.parameters["aid_id"] = valid_aids[0].id # temporary fix
+                dialog.append({'role': 'assistant',
+                                'content': '{}  {} should receive the action.'.format(
+                                    selected_character['brief_reasoning'],
+                                    selected_character['character_choice'])})
+                dialog.append({'role': 'user',
+                               'content': followup_clarify_aid(
+                                    selected_character_dict,
+                                    available_aids)})
+
+                dialog_text = self.dialog_to_prompt(dialog)
+
+                generator = outlines.generate.json(
+                    self.model,
+                    aid_choice_json_schema(
+                        json.dumps([aid.id for aid in available_aids])),
+                    sampler=self.sampler,
+                    whitespace_pattern=r"[ ]?")
+
+                log.info("[bold]*DIALOG PROMPT*[/bold]",
+                            extra={"markup": True})
+                log.info(dialog_text)
+
+                selected_aid = generator(dialog_text)
+
+                log.info("[bold]*STRUCTURED RESPONSE*[/bold]",
+                            extra={"markup": True})
+                log.info(selected_aid, extra={"highlighter": JSON_HIGHLIGHTER})
+
+                action_to_take.parameters["aid_id"] = selected_aid['aid_choice']
 
         return action_to_take

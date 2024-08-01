@@ -37,7 +37,7 @@ from align_system.prompt_engineering.outlines_prompts import (
 log = logging.getLogger(__name__)
 JSON_HIGHLIGHTER = JSONHighlighter()
 
-# Data strucutre reformat helper function 
+# Data strucutre reformat helper function
 def merge_samples(dict_list):
     # Initialize the result dictionary
     result = {}
@@ -52,7 +52,7 @@ def merge_samples(dict_list):
                 if isinstance(value, dict):
                     if inner_key not in result[outer_key]:
                         result[outer_key][inner_key] = {}
-                    
+
                     for sub_key, sub_value in value.items():
                         if sub_key not in result[outer_key][inner_key]:
                             result[outer_key][inner_key][sub_key] = []
@@ -61,7 +61,7 @@ def merge_samples(dict_list):
                     if inner_key not in result[outer_key]:
                         result[outer_key][inner_key] = []
                     result[outer_key][inner_key].append(value)
-    
+
     return result
 
 class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
@@ -149,11 +149,11 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
                 icl_choices_with_outcomes = {}
                 for choice in icl_choices:
                     # TODO: Include outcome prediction for ICL examples?
-                    icl_choices_with_outcomes[choice] = {'predicted_outcome':None} 
+                    icl_choices_with_outcomes[choice] = {'predicted_outcome':None}
 
                 icl_scenario_description = scenario_state_description_dre(state)
-                icl_prompt = comparative_kdma_score_prediction_prompt(icl_scenario_description, 
-                                                                    icl_choices_with_outcomes, 
+                icl_prompt = comparative_kdma_score_prediction_prompt(icl_scenario_description,
+                                                                    icl_choices_with_outcomes,
                                                                     dset_kdma)
                 icl_reponse = {}
                 for action, icl_choice, label in zip(actions, icl_choices, icl_sample["label"]):
@@ -237,7 +237,7 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
                     for icl_sample in selected_icl_examples:
                         icl_examples.extend([
                             {"role": "user", "content": icl_sample['prompt']},
-                            {"role": "assistant", "content": f'{icl_sample['response']}'}
+                            {"role": "assistant", "content": f'{icl_sample["response"]}'}
                         ])
 
                 predict_kdma_prompt = comparative_kdma_score_prediction_prompt(scenario_description, predictions[sample_idx], target_kdma_name)
@@ -291,8 +291,8 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
             reasoning = ''
         # Add predicted KDMA scores to reasoning
         for target_kdma in target_kdmas:
-            reasoning += f' The predicted scores for {target_kdma['name']} were '
-            reasoning += f'{str(predicted_kdma_values[selected_choice][target_kdma['kdma']]['score'])}.'
+            reasoning += f' The predicted scores for {target_kdma["name"]} were '
+            reasoning += f'{str(predicted_kdma_values[selected_choice][target_kdma["kdma"]]["score"])}.'
         return reasoning
 
 
@@ -354,7 +354,7 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
         '''
         # For now only align to first target
         target_kdma = target_kdmas[0] # TODO extend to multi-KDMA target scenario
-        
+
         target_kde = kde_utils.load_kde(target_kdma, kde_norm)
 
         # Get predicted KDE for each choice and get distance to target
@@ -440,19 +440,19 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
                                                         kdma_score_examples, \
                                                         incontext_settings=kwargs.get("incontext", {}))
 
-        # Reformat predictions from a list of sampled dictionaries 
+        # Reformat predictions from a list of sampled dictionaries
         # to a single dictionary with values that are a list of samples
         predicted_kdma_values = merge_samples(predictions)
 
         # Select best choice
-        
+
         # If we have a scalar value target, use average distribution matching
         # TODO extend logic to multi-KDMA scenario with mix of KDE and scalar targets
         if target_kdmas[0].value is not None:
             # Averages over predicted score samples and selects choice with minimum MSE to target
             selected_choice = self.average_scalar_matching(predicted_kdma_values, target_kdmas)
             # Currently returning the reasoning associated with the first sample for the selected choice
-        
+
         # Else is we have KDE targets, use distribution_matching param to select choice
         elif hasattr(target_kdmas[0], 'kdes') and target_kdmas[0].kdes is not None:
             if distribution_matching == 'sample':
