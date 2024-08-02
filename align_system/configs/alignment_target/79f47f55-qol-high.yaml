@@ -1,3 +1,4 @@
+_target_: swagger_client.models.AlignmentTarget
 id: 79f47f55-qol-high
 kdma_values:
 - kdes:
@@ -186,4 +187,3 @@ kdma_values:
         '
       label: rawscores
   kdma: QualityOfLife
-  value: null
