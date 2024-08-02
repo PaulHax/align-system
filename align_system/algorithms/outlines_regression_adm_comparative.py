@@ -5,6 +5,7 @@ import pathlib
 import yaml
 import itertools
 import torch
+from copy import deepcopy
 from collections import defaultdict
 
 import outlines
@@ -166,6 +167,7 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
                     icl_reponse[icl_choice]['score'] = int(label[dset_kdma] * 10)
 
                 icl_datasets[dset_kdma].append({
+                    "scenario_description": icl_scenario_description,
                     "prompt": icl_prompt,
                     "response": icl_reponse
                     })
@@ -209,6 +211,12 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
                     if kdma_sys_name not in icl_datasets:
                         raise RuntimeError(f"No incontext samples for targeted kdma: {kdma_sys_name}")
                     possible_icl_examples = icl_datasets[kdma_sys_name]
+                    if incontext_settings.get("leave_one_out", False):
+                        # Don't include example ICL with exact same scenario state
+                        possible_icl_examples = [
+                            icl_ex for icl_ex in possible_icl_examples
+                            if icl_ex["scenario_description"] != scenario_description
+                        ]
                     if len(possible_icl_examples) < n_icl_examples:
                         raise RuntimeError(f"Not enough possible incontext samples to learn from. Only "
                                         f"{len(possible_icl_examples)} samples available while asking for "
@@ -220,7 +228,10 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
                         selected_icl_examples = random.sample(possible_icl_examples, n_icl_examples)
                     elif icl_strategy == "bert_similarity":
                         # TODO: Include outcome prediction for ICL examples?
-                        no_outcome_prompt = comparative_kdma_score_prediction_prompt(scenario_description, predictions[sample_idx], target_kdma_name)
+                        no_outcome_predictions = deepcopy(predictions[sample_idx])
+                        for choice in no_outcome_predictions.keys():
+                            no_outcome_predictions[choice]['predicted_outcome'] = None
+                        no_outcome_prompt = comparative_kdma_score_prediction_prompt(scenario_description, no_outcome_predictions, target_kdma_name)
 
                         possible_icl_prompts = [icl_sample["prompt"] for icl_sample in possible_icl_examples]
 
