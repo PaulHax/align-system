@@ -102,9 +102,8 @@ class OracleADM(ActionBasedADM):
             return action_to_take
 
     def choose_action(self, scenario_state, available_actions, alignment_target,
-                      distribution_matching: str='sample', kde_norm: str='globalnorm',
-                      **kwargs):
-
+                      distribution_matching: str='sample', num_kde_samples: int=1,
+                      kde_norm: str='rawscores', **kwargs):
         if available_actions is None or len(available_actions) == 0:
             return None
 
@@ -129,16 +128,21 @@ class OracleADM(ActionBasedADM):
             if 'value' in target and target['value'] is not None:
                 scalar_target_kdma_assoc[target['kdma']] = target['value']
 
-        # If scalar targets
-        if len(scalar_target_kdma_assoc) > 0:
+        # If all targets are scalar
+        if len(scalar_target_kdma_assoc) == len(alignment_target.kdma_values):
             action_to_take = self.match_to_scalar_target(alignment_target, available_actions)
 
-        # If KDE targets
-        else:
+        # If we have a single KDE target
+        elif len(alignment_target.kdma_values) == 1 and hasattr(alignment_target.kdma_values[0], 'kdes'):
             if distribution_matching == 'sample':
-                action_to_take = distribution_matching_utils.match_to_target_kde_sample(alignment_target, available_actions, kde_norm)
+                action_to_take = distribution_matching_utils.match_to_target_kde_sample(alignment_target, available_actions, kde_norm, num_kde_samples)
+            elif distribution_matching == 'max_likelihood':
+                action_to_take = distribution_matching_utils.max_likelihood_matching(alignment_target, available_actions, kde_norm)
             else:
                 raise RuntimeError(distribution_matching, "distribution matching function unrecognized.")
+        
+        else:
+            raise RuntimeError("Matching to multiple KDE targets is not implemented.")
 
         # Action requires a character ID
         if action_to_take.action_type in {ActionTypeEnum.CHECK_ALL_VITALS,
