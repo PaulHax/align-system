@@ -25,6 +25,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * Added some random ADM experiments for the SoarTech dry run scenarios
 * Added `intend_action` to the `ActionBasedScenarioInterface` to comply with TA3 server updates
 * Added functionality in comparative regression for aligning to KDE targets
+* Added a misaligned option for the Oracle ADM. Currently only applicable to scalar targets.
 
 ### Fixed
 

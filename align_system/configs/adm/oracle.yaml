@@ -3,5 +3,7 @@ instance:
 
   probabilistic: false
   upweight_missing_kdmas: false
+  filter_unlabeled_actions: false
+  misaligned: false
   distribution_matching: sample
   kde_norm: globalnorm
