@@ -17,13 +17,18 @@ log = logging.getLogger(__name__)
 
 
 class OracleADM(ActionBasedADM):
-    def __init__(self, probabilistic: bool=False, upweight_missing_kdmas: bool=False, **kwargs):
+    def __init__(
+        self, probabilistic: bool=False, upweight_missing_kdmas: bool=False,
+        filter_unlabeled_actions: bool=False, misaligned: bool=False, **kwargs
+    ):
         self.probabilistic = probabilistic
         self.upweight_missing_kdmas = upweight_missing_kdmas
+        self.filter_unlabeled_actions = filter_unlabeled_actions
+        self.misaligned = misaligned
 
-    def _inverse_distance(self, target_kdma_values, system_kdmas, min_value=0., max_value=1.):
+    def _euclidean_distance(self, target_kdma_values, system_kdmas, min_value=0., max_value=1.):
         """
-        Compute 1/(Euclidean distance between the target and system KDMAs)
+        Compute Euclidean distance between the target and system KDMAs
         """
         if system_kdmas is None:
             system_kdmas = dict()
@@ -47,9 +52,7 @@ class OracleADM(ActionBasedADM):
         #Edge case #2: System KDMA is not present in Target KDMAs => ignoring for now
         # e.g if Target: X=10; Choice A: X=3; Choice B: X=3, Y=5; then A and B are equivalent
 
-        # TODO: Should we just return 1/distance**2?
-        # Small epsilon for a perfect (0 distance) match
-        return math.sqrt(1/(distance+1e-16))
+        return math.sqrt(distance)
 
 
     def match_to_scalar_target(self, alignment_target, available_actions):
@@ -60,13 +63,26 @@ class OracleADM(ActionBasedADM):
             }
 
             # Weight action choices with distance-based metric
-            inv_dists = [
-                self._inverse_distance(target_kdma_values=target_kdma_assoc, system_kdmas=action.kdma_association)
+            dists = [
+                self._euclidean_distance(target_kdma_values=target_kdma_assoc, system_kdmas=action.kdma_association)
                 for action in available_actions
             ]
 
-            # Convert inverse distances to probabilities
-            probs = [inv_dist/sum(inv_dists) for inv_dist in inv_dists]
+            if not self.misaligned:
+                # For aligned, want to minimize to distance to target
+                # Invert distances so minimal distances have higher probability
+
+                # Small epsilon for a perfect (0 distance) match
+                inv_dists = [1/(distance+1e-16) for distance in dists]
+
+                # Convert inverse distances to probabilities
+                probs = [inv_dist/sum(inv_dists) for inv_dist in inv_dists]
+            else:
+                # For misaligned, want to maximize distance to target, so
+                # maximize over non-inverted distances
+
+                # Convert distances to probabilities
+                probs = [dist/sum(dists) for dist in dists]
 
             if self.probabilistic:
                 action_to_take = np.random.choice(available_actions, p=probs)
@@ -88,8 +104,18 @@ class OracleADM(ActionBasedADM):
     def choose_action(self, scenario_state, available_actions, alignment_target,
                       distribution_matching: str='sample', kde_norm: str='globalnorm',
                       **kwargs):
+
         if available_actions is None or len(available_actions) == 0:
             return None
+
+        if self.filter_unlabeled_actions:
+            available_actions = [
+                action for action in available_actions
+                if action.kdma_association is not None and len(action.kdma_association) > 0
+            ]
+
+            if len(available_actions) == 0:
+                raise RuntimeError("No actions left to take after filtering unlabled actions")
 
         if alignment_target is None:
             raise ValueError("Oracle ADM needs alignment target")
