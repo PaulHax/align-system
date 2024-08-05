@@ -173,9 +173,16 @@ def js_distance(kde1, kde2, samples: int):
     x = np.linspace(0, 1, samples)
     pdf_kde1 = _kde_to_pdf(kde1, x)
     pdf_kde2 = _kde_to_pdf(kde2, x)
-    
-    # Compute the Jensen-Shannon Distance using samples
-    js = jensenshannon(pdf_kde1, pdf_kde2)
+
+    if np.allclose(pdf_kde1, pdf_kde2):
+        # If two kdes are functionally identical but off by a 10 to the minus 6 or so floating point amount
+        # jensenshannon can hit floating point roundoff problems and return a nan instead of a zero.
+        # To avoid introducing nans by hitting this case, we'll set very close to zero cases to zero.
+        print("KDE1 and KDE2 are so close to identical Jensenshannon can produce a nan. Assigning them to be identical.")
+        js = 0.0
+    else:
+        # Compute the Jensen-Shannon Distance using samples
+        js = jensenshannon(pdf_kde1, pdf_kde2)
 
     # 1 = unaligned, 0 = full aligned 
     return js
