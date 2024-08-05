@@ -40,7 +40,7 @@ def max_likelihood_matching(alignment_target, available_actions, kde_norm):
 			log_likelihood = target_kde.score_samples(np.array([choice_value]).reshape(-1, 1))[0]
 			likelihood = np.exp(log_likelihood)
 			if likelihood > max_likelihood:
-				max_likelihood = log_likelihood
+				max_likelihood = likelihood
 				selected_action = action
 	
 	return selected_action
