@@ -5,5 +5,8 @@ instance:
   upweight_missing_kdmas: false
   filter_unlabeled_actions: false
   misaligned: false
+
+inference_kwargs:
   distribution_matching: sample
-  kde_norm: globalnorm
+  num_samples: 1
+  kde_norm: rawscores

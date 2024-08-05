@@ -8,6 +8,7 @@ interface:
   session_type: soartech
   scenario_ids:
     - qol-dre-1-train
+    - qol-dre-2-train
   training_session: true
 
 align_to_target: true
