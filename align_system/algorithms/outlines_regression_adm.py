@@ -27,7 +27,7 @@ from align_system.prompt_engineering.outlines_prompts import (
     kdma_score_prediction_system_prompt_with_examples,
     kdma_score_prediction_prompt,
     kdma_score_prediction_json_schema,
-    regression_alignment_system_prompt,
+    baseline_system_prompt,
     action_selection_prompt
 )
 
@@ -473,7 +473,7 @@ class OutlinesTransformersRegressionADM(OutlinesTransformersADM):
         action_to_take.justification = first_justification
 
         # Set up simple diaolg to return for follow-ups
-        alignment_system_prompt = regression_alignment_system_prompt(target_kdmas)
+        alignment_system_prompt = baseline_system_prompt()
         prompt = action_selection_prompt(scenario_description, choices)
         dialog = [{'role': 'system', 'content': alignment_system_prompt},
                   {'role': 'user', 'content': prompt}]

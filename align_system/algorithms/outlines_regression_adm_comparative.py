@@ -31,7 +31,7 @@ from align_system.prompt_engineering.outlines_prompts import (
     comparative_kdma_score_prediction_system_prompt_with_examples,
     comparative_kdma_score_prediction_prompt,
     comparative_kdma_score_prediction_json_schema,
-    regression_alignment_system_prompt,
+    baseline_system_prompt,
     action_selection_prompt
 )
 
@@ -459,7 +459,7 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
 
         # If we have a scalar value target, use average distribution matching
         # TODO extend logic to multi-KDMA scenario with mix of KDE and scalar targets
-        if target_kdmas[0].value is not None:
+        if hasattr(target_kdmas[0], 'value') and target_kdmas[0].value is not None:
             # Averages over predicted score samples and selects choice with minimum MSE to target
             selected_choice = self.average_scalar_matching(predicted_kdma_values, target_kdmas)
             # Currently returning the reasoning associated with the first sample for the selected choice
@@ -489,7 +489,7 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
         action_to_take.justification = self.get_selected_choice_reasoning(selected_choice, predicted_kdma_values, target_kdmas)
 
         # Set up simple diaolg to return for follow-ups
-        alignment_system_prompt = regression_alignment_system_prompt(target_kdmas)
+        alignment_system_prompt = baseline_system_prompt()
         prompt = action_selection_prompt(scenario_description, choices)
         dialog = [{'role': 'system', 'content': alignment_system_prompt},
                   {'role': 'user', 'content': prompt}]
