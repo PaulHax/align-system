@@ -7,6 +7,7 @@ import itertools
 import torch
 from copy import deepcopy
 from collections import defaultdict
+import numpy as np
 
 import outlines
 from outlines.samplers import MultinomialSampler
@@ -359,7 +360,7 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
 
 
     def kde_js_distribution_matching(self, predicted_kdma_values, target_kdmas, kde_norm):
-        '''.
+        '''
         Creates predicted KDEs for each choice using sampled score predictions
         Returns the selected choice with minimum JS divergence to target KDE
         '''
@@ -383,6 +384,35 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
         selected_choice = min_distance_choice
 
         return selected_choice
+
+
+    def mle_distribution_matching(self, predicted_kdma_values, target_kdmas, kde_norm):
+        '''
+        Get average likelihood of sampled score predictions under target KDE for each choice
+        Returns the selected choice with maximum average likelihood
+        '''
+        # For now only align to first target
+        target_kdma = target_kdmas[0] # TODO extend to multi-KDMA target scenario
+
+        target_kde = kde_utils.load_kde(target_kdma, kde_norm)
+
+        # Get average likelihood for each choice
+        max_likelihood = 0
+        max_likelihood_choice = None
+        for choice in predicted_kdma_values.keys():
+            predicted_samples = predicted_kdma_values[choice][target_kdma.kdma]['score']
+            # predicted scores are between 0-10 and target kdes are between 0-1
+            predicted_samples = [score/10 for score in predicted_samples]
+            log_likelihoods = target_kde.score_samples(np.array([predicted_samples]).reshape(-1, 1))
+            likelihoods = np.exp(log_likelihoods)
+            avg_likelihood = likelihoods.mean()
+            if avg_likelihood > max_likelihood:
+                max_likelihood = avg_likelihood
+                max_likelihood_choice = choice
+        selected_choice = max_likelihood_choice
+
+        return selected_choice
+
 
     def top_level_choose_action(self,
                                 scenario_state,
@@ -472,6 +502,9 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
                     target_kde = kde_utils.load_kde(target_kdmas[kdma_idx], kde_norm)
                     target_kdmas[kdma_idx]['value'] = target_kde.sample(1)
                 selected_choice = self.average_scalar_matching(predicted_kdma_values, target_kdmas)
+            elif distribution_matching == 'max_likelihood':
+                # Select choice with max likelihood of predicted scores under target KDE
+                selected_choice = self.mle_distribution_matching(predicted_kdma_values, target_kdmas, kde_norm)
             elif distribution_matching == 'js_divergence':
                 # Convert predicted samples to KDE and compute JS divergence
                 selected_choice = self.kde_js_distribution_matching(predicted_kdma_values, target_kdmas, kde_norm)
