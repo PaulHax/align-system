@@ -503,13 +503,19 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
                     target_kdmas[kdma_idx]['value'] = target_kde.sample(1)
                 selected_choice = self.average_scalar_matching(predicted_kdma_values, target_kdmas)
             elif distribution_matching == 'max_likelihood':
-                # Select choice with max likelihood of predicted scores under target KDE
-                selected_choice = self.mle_distribution_matching(predicted_kdma_values, target_kdmas, kde_norm)
+                if len(target_kdmas) == 1:
+                    # Select choice with max likelihood of predicted scores under target KDE
+                    selected_choice = self.mle_distribution_matching(predicted_kdma_values, target_kdmas, kde_norm)
+                else:
+                    raise RuntimeError(f"{distribution_matching} distribution matching is not implemented for multiple KDMA targets.")
             elif distribution_matching == 'js_divergence':
-                # Convert predicted samples to KDE and compute JS divergence
-                selected_choice = self.kde_js_distribution_matching(predicted_kdma_values, target_kdmas, kde_norm)
+                if len(target_kdmas) == 1:
+                    # Convert predicted samples to KDE and compute JS divergence
+                    selected_choice = self.kde_js_distribution_matching(predicted_kdma_values, target_kdmas, kde_norm)
+                else:
+                    raise RuntimeError(f"{distribution_matching} distribution matching is not implemented for multiple KDMA targets.")
             else:
-                raise RuntimeError(distribution_matching, "distribution matching function unrecognized.")
+                raise RuntimeError(f"{distribution_matching} distribution matching function unrecognized.")
         else:
             raise RuntimeError("Alignment target does not have an associated value or KDEs.")
 
