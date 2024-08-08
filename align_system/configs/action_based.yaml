@@ -12,6 +12,6 @@ save_log: true
 save_input_output: true
 save_scoring_output: true
 save_alignment_targets: false
-save_timing: false
+save_timing: true
 
 align_to_target: false
