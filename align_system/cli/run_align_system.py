@@ -11,6 +11,7 @@ from swagger_client.models import ActionTypeEnum
 import hydra
 from hydra.utils import instantiate
 from omegaconf import DictConfig
+from timeit import default_timer as timer
 
 from align_system.utils import logging
 
@@ -46,6 +47,10 @@ def main(cfg: DictConfig) -> None:
     if cfg.save_alignment_targets:
         save_alignment_targets_to_path = os.path.join(output_dir, "targets")
         os.mkdir(save_alignment_targets_to_path)
+
+    save_timing_to_path = None
+    if cfg.save_timing:
+        save_timing_to_path = os.path.join(output_dir, "timing.json")
 
     # Set log level on root logger (such that child loggers respect
     # the set log level)
@@ -105,6 +110,20 @@ def main(cfg: DictConfig) -> None:
 
     session_alignment_scores = []
 
+    # Capture time it takes to choose each action
+    action_times = { "scenarios": [] }
+    def _compute_time_stats(times_s):
+        n_times = len(times_s)
+        total_time_s = sum(times_s)
+        return {
+            "n_actions_taken": n_times,
+            "total_time_s": total_time_s,
+            "avg_time_s": total_time_s / n_times if n_times else 0.,
+            "max_time_s": max(times_s) if n_times else 0.,
+            "raw_times_s": times_s
+        }
+
+
     # Loop through available scenarios
     while scenario := interface.start_scenario():
         if scenario.id() == '':
@@ -135,6 +154,8 @@ def main(cfg: DictConfig) -> None:
 
         # Tracking these to prevent getting stuck in a loop
         noop_actions = []
+
+        sce_times_s = []
 
         while not scenario_complete:
             available_actions = scenario.get_available_actions()
@@ -221,6 +242,8 @@ def main(cfg: DictConfig) -> None:
                 action_to_take = available_actions_filtered[0]
                 action_to_take.justification = "Only available (filtered) action"
             else:
+                start_choose_action = timer()
+
                 # Passing in a copy of available filtered actions to
                 # prevent ADMs from modifying the originals (should
                 # considering doing the same for current_state and
@@ -230,6 +253,10 @@ def main(cfg: DictConfig) -> None:
                     [deepcopy(a) for a in available_actions_filtered],
                     alignment_target if cfg.align_to_target else None,
                     **cfg.adm.get('inference_kwargs', {}))
+
+                end_choose_action = timer()
+                sce_times_s.append(end_choose_action - start_choose_action)
+                log.debug(f"choose_action took {end_choose_action - start_choose_action} seconds")
 
             log.debug("[bold]*ACTION BEING TAKEN*[/bold]",
                       extra={"markup": True})
@@ -286,6 +313,9 @@ def main(cfg: DictConfig) -> None:
                 log.info("Final state unstructured: {}".format(
                     current_state.unstructured))
 
+        if save_timing_to_path is not None:
+            action_times["scenarios"].append(_compute_time_stats(sce_times_s))
+
         if alignment_target is not None:
             session_alignment = interface.get_session_alignment(
                 alignment_target)
@@ -304,6 +334,16 @@ def main(cfg: DictConfig) -> None:
                          extra={"markup": True})
                 log.info(json.dumps(session_alignment_dict, indent=4),
                          extra={"highlighter": JSON_HIGHLIGHTER})
+
+    if save_timing_to_path is not None:
+        all_times = []
+        for sce in action_times["scenarios"]:
+            all_times.extend(sce["raw_times_s"])
+
+        action_times.update(_compute_time_stats(all_times))
+
+        with open(save_timing_to_path, 'w') as f:
+            json.dump(action_times, f, indent=2)
 
     if save_input_output_to_path is not None:
         with open(save_input_output_to_path, 'w') as f:
