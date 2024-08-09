@@ -19,12 +19,13 @@ from swagger_client.models import (
 
 from align_system.utils import logging
 from align_system.utils import kde_utils
+from align_system.utils import outlines_prompts_utils
 from align_system.utils.hydrate_state import hydrate_scenario_state
 from align_system.algorithms.outlines_adm import OutlinesTransformersADM
 from align_system.algorithms.outlines_regression_adm import get_chain_of_thought_reasoning
 from align_system.prompt_engineering.outlines_prompts import (
     detailed_unstructured_treatment_action_text,
-    scenario_state_description_dre,
+    scenario_state_description_with_relevant_char_info,
     comparative_outcomes_system_prompt,
     comparative_outcome_prediction_prompt,
     comparative_outcome_prediction_json_schema,
@@ -153,7 +154,8 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
                     # TODO: Include outcome prediction for ICL examples?
                     icl_choices_with_outcomes[choice] = {'predicted_outcome':None}
 
-                icl_scenario_description = scenario_state_description_dre(state)
+                character_info = outlines_prompts_utils.get_relevant_structured_character_info(state.characters)
+                icl_scenario_description = scenario_state_description_with_relevant_char_info(state, character_info)
                 icl_prompt = comparative_kdma_score_prediction_prompt(icl_scenario_description,
                                                                     icl_choices_with_outcomes,
                                                                     dset_kdma)
@@ -427,7 +429,8 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
                                 kdma_score_examples=False,
                                 **kwargs):
 
-        scenario_description = scenario_state_description_dre(scenario_state)
+        character_info = outlines_prompts_utils.get_relevant_structured_character_info(scenario_state.characters)
+        scenario_description = scenario_state_description_with_relevant_char_info(scenario_state, character_info)
 
         # Important that the choices stay in the same order as the
         # available actions as we'll use the selected index later to

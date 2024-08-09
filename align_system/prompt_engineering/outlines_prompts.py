@@ -197,6 +197,23 @@ def scenario_state_description_dre(scenario_state):
     {{ scenario_state.unstructured.rstrip() }}
     """
 
+# Prompt that includes provided relevant structured character info 
+# characters is a list of dicts with keys: name, unstructured, relevant_structured
+# the relevant_structured field is expected to already be serialized to a string (JSON.stringify(strucutured_json))
+@outlines.prompt
+def scenario_state_description_with_relevant_char_info(scenario_state, characters):
+    """
+    CHARACTERS:
+    {% for character in characters %}
+    - {{ character.name }}: {{ character.unstructured.rstrip() }}
+    {% if character.relevant_structured is not none %}
+      {{ character.name }}'s information: {{ character.relevant_structured }}
+    {% endif %}
+    {% endfor %}
+
+    SITUATION:
+    {{ scenario_state.unstructured.rstrip() }}
+    """
 
 @outlines.prompt
 def followup_clarify_character(characters):
