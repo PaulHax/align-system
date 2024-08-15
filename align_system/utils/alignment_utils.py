@@ -86,16 +86,19 @@ class AvgDistScalarAlignment(AlignmentFunction):
         selected_choice, probs = self._select_min_dist_choice(choices, distances, misaligned)
 
         if return_best_sample_index:
-            best_sample_index = 0
-            min_dist = float('inf')
-            for sample_idx in range(len(samples)):
-                dist = 0
-                for target_kdma in target_kdmas:
-                    sample = kdma_values[selected_choice][target_kdma['kdma']][sample_idx]
-                    dist += _euclidean_distance(target_kdma['value'], sample)
-                if dist < min_dist:
-                    min_dist = dist
-                    best_sample_index = sample_idx
+            sample_distances = []
+            sample_indices = range(len(samples))
+            if len(sample_indices) == 1:
+                best_sample_index = 0
+            else:
+                # For the selected choice, find the sample closest to the target
+                for sample_idx in sample_indices:
+                    sample_dist = 0
+                    for target_kdma in target_kdmas:
+                        sample = kdma_values[selected_choice][target_kdma['kdma']][sample_idx]
+                        sample_dist += _euclidean_distance(target_kdma['value'], sample)
+                    sample_distances.append(sample_dist)
+                best_sample_index, _ = self._select_min_dist_choice(sample_indices, sample_distances, misaligned)
             return selected_choice, probs, best_sample_index
         else:
             return selected_choice, probs
@@ -148,17 +151,20 @@ class MaxLikelihoodKdeAlignment(AlignmentFunction):
         selected_choice, probs = self._select_min_dist_choice(choices, distances, misaligned)
 
         if return_best_sample_index:
-            best_sample_index = 0
-            min_dist = float('inf')
-            for sample_idx in range(len(predicted_samples)):
-                dist = 0
-                for target_kdma in target_kdmas:
-                    sample = kdma_values[selected_choice][target_kdma['kdma']][sample_idx]
-                    likelihood = np.exp(target_kde.score_samples(np.array([sample]).reshape(-1, 1))[0])
-                    dist += 1/likelihood
-                if dist < min_dist:
-                    min_dist = dist
-                    best_sample_index = sample_idx
+            sample_distances = []
+            sample_indices = range(len(predicted_samples))
+            if len(sample_indices) == 1:
+                best_sample_index = 0
+            else:
+                # For the selected choice, find the sample closest to the target
+                for sample_idx in sample_indices:
+                    sample_dist = 0
+                    for target_kdma in target_kdmas:
+                        sample = kdma_values[selected_choice][target_kdma['kdma']][sample_idx]
+                        likelihood = np.exp(target_kde.score_samples(np.array([sample]).reshape(-1, 1))[0])
+                        sample_dist += 1/likelihood
+                    sample_distances.append(sample_dist)
+                best_sample_index, _ = self._select_min_dist_choice(sample_indices, sample_distances, misaligned)
             return selected_choice, probs, best_sample_index
         else:
             return selected_choice, probs
@@ -187,18 +193,23 @@ class JsDivergenceKdeAlignment(AlignmentFunction):
 
         selected_choice, probs = self._select_min_dist_choice(choices, distances, misaligned)
 
+
         if return_best_sample_index:
-            best_sample_index = 0
-            min_dist = float('inf')
-            for sample_idx in range(len(predicted_samples)):
-                dist = 0
-                for target_kdma in target_kdmas:
-                    sample = kdma_values[selected_choice][target_kdma['kdma']][sample_idx]
-                    likelihood = np.exp(target_kde.score_samples(np.array([sample]).reshape(-1, 1))[0])
-                    dist += 1/likelihood
-                if dist < min_dist:
-                    min_dist = dist
-                    best_sample_index = sample_idx
+            sample_distances = []
+            sample_indices = range(len(predicted_samples))
+            if len(sample_indices) == 1:
+                best_sample_index = 0
+            else:
+                 # For the selected choice, find the sample closest to the target
+                for sample_idx in sample_indices:
+                    sample_dist = 0
+                    for target_kdma in target_kdmas:
+                        sample = kdma_values[selected_choice][target_kdma['kdma']][sample_idx]
+                        # Using likelihood because JS is between two distributions
+                        likelihood = np.exp(target_kde.score_samples(np.array([sample]).reshape(-1, 1))[0])
+                        sample_dist += 1/likelihood
+                    sample_distances.append(sample_dist)
+                best_sample_index, _ = self._select_min_dist_choice(sample_indices, sample_distances, misaligned)
             return selected_choice, probs, best_sample_index
         else:
             return selected_choice, probs
