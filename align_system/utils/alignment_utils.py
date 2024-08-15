@@ -16,17 +16,22 @@ Inputs:
     - misaligned (optional): If true will pick the least alignmed option (default is false)
     - kde_norm (optional): Normalization to use if target is KDE
         Options: 'rawscores', 'localnorm', 'globalnorm', 'globalnormx_localnormy'
+    - return_best_sample_index (optional): If true will return the index of the sample in kdma_values closest to the
+        target for the selected choice (default is False)
 Returns:
     - The selected choice from kdma_values.keys()
         For example: 'Treat Patient A'
+    - The probability associated with each choice
+    - Optionally: The index of the sample that was closest to the target for the selected choice
 '''
 class AlignmentFunction(ABC):
     @abstractmethod
-    def __call__(self, kdma_values, target_kdmas, misaligned=False, kde_norm=None):
+    def __call__(self, kdma_values, target_kdmas, misaligned=False, kde_norm=None, return_best_sample_index=False):
         '''
         1. Make sure the data is in the right format (scalar vs KDE target)
         2. Compute the distance of each choice to the targets
-        3. Call _select_min_dist_choice() and return selected choice and probs
+        3. Call _select_min_dist_choice() to get selected choice and probs
+        4. Optionally find the index of the best sample for justification
         '''
         pass
 
@@ -57,7 +62,7 @@ class AlignmentFunction(ABC):
 
 
 class AvgDistScalarAlignment(AlignmentFunction):
-    def __call__(self, kdma_values, target_kdmas, misaligned=False): 
+    def __call__(self, kdma_values, target_kdmas, misaligned=False, return_best_sample_index=False):
         '''
         Selects a choice by first averaging score across samples,
         then selecting the one with minimal MSE to the scalar target.
@@ -80,11 +85,24 @@ class AvgDistScalarAlignment(AlignmentFunction):
 
         selected_choice, probs = self._select_min_dist_choice(choices, distances, misaligned)
 
-        return selected_choice, probs
+        if return_best_sample_index:
+            best_sample_index = 0
+            min_dist = float('inf')
+            for sample_idx in range(len(samples)):
+                dist = 0
+                for target_kdma in target_kdmas:
+                    sample = kdma_values[selected_choice][target_kdma['kdma']][sample_idx]
+                    dist += _euclidean_distance(target_kdma['value'], sample)
+                if dist < min_dist:
+                    min_dist = dist
+                    best_sample_index = sample_idx
+            return selected_choice, probs, best_sample_index
+        else:
+            return selected_choice, probs
 
 
 class MinDistToRandomSampleKdeAlignment(AlignmentFunction): 
-    def __call__(self, kdma_values, target_kdmas, misaligned=False, kde_norm='globalnorm'):
+    def __call__(self, kdma_values, target_kdmas, misaligned=False, kde_norm='globalnorm', return_best_sample_index=False):
         '''
         Returns the choice with min average distance to random sample from the target KDEs
         '''
@@ -100,11 +118,11 @@ class MinDistToRandomSampleKdeAlignment(AlignmentFunction):
 
         # Use avergae distance to sampled scalar targets
         AlignmentFunc = AvgDistScalarAlignment()
-        return AlignmentFunc(kdma_values, sampled_target_kdmas, misaligned)
+        return AlignmentFunc(kdma_values, sampled_target_kdmas, misaligned=misaligned, return_best_sample_index=return_best_sample_index)
 
 
 class MaxLikelihoodKdeAlignment(AlignmentFunction):
-    def __call__(self, kdma_values, target_kdmas, misaligned=False, kde_norm='globalnorm'):
+    def __call__(self, kdma_values, target_kdmas, misaligned=False, kde_norm='globalnorm', return_best_sample_index=False):
         '''
         Gets the likelihood of sampled score predictions under the target KDE for each choice
         Returns the selected choice with maximum average likelihood
@@ -129,11 +147,24 @@ class MaxLikelihoodKdeAlignment(AlignmentFunction):
 
         selected_choice, probs = self._select_min_dist_choice(choices, distances, misaligned)
 
-        return selected_choice, probs
-
+        if return_best_sample_index:
+            best_sample_index = 0
+            min_dist = float('inf')
+            for sample_idx in range(len(predicted_samples)):
+                dist = 0
+                for target_kdma in target_kdmas:
+                    sample = kdma_values[selected_choice][target_kdma['kdma']][sample_idx]
+                    likelihood = np.exp(target_kde.score_samples(np.array([sample]).reshape(-1, 1))[0])
+                    dist += 1/likelihood
+                if dist < min_dist:
+                    min_dist = dist
+                    best_sample_index = sample_idx
+            return selected_choice, probs, best_sample_index
+        else:
+            return selected_choice, probs
 
 class JsDivergenceKdeAlignment(AlignmentFunction):
-    def __call__(self, kdma_values, target_kdmas, misaligned=False, kde_norm='globalnorm'):
+    def __call__(self, kdma_values, target_kdmas, misaligned=False, kde_norm='globalnorm', return_best_sample_index=False):
         '''
         Creates predicted KDEs for each choice using sampled score predictions
         Returns the selected choice with minimum JS divergence to target KDE
@@ -156,7 +187,21 @@ class JsDivergenceKdeAlignment(AlignmentFunction):
 
         selected_choice, probs = self._select_min_dist_choice(choices, distances, misaligned)
 
-        return selected_choice, probs
+        if return_best_sample_index:
+            best_sample_index = 0
+            min_dist = float('inf')
+            for sample_idx in range(len(predicted_samples)):
+                dist = 0
+                for target_kdma in target_kdmas:
+                    sample = kdma_values[selected_choice][target_kdma['kdma']][sample_idx]
+                    likelihood = np.exp(target_kde.score_samples(np.array([sample]).reshape(-1, 1))[0])
+                    dist += 1/likelihood
+                if dist < min_dist:
+                    min_dist = dist
+                    best_sample_index = sample_idx
+            return selected_choice, probs, best_sample_index
+        else:
+            return selected_choice, probs
 
 
 # If score is a single value, then set it to a list containing that value
