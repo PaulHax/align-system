@@ -11,6 +11,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * No longer overwriting data when followup prompts are used in the Outlines ADM
 * Small updates to Outlines ADM to be compatible with API updates
 * Updated the oracle and comparative regression ADMs to use `AlignmentFunction` class
+* Updated comparative regression ADMs justification to use the best samples reasoning
 
 ### Added
 
