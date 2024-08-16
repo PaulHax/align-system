@@ -284,19 +284,16 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
 
         return predictions, reasonings
 
-
-    # TODO - this could be improved (i.e. include probs or score prediction reasoning)
-    def get_selected_choice_reasoning(self, selected_choice, outcome_predictions, predicted_kdma_values, target_kdmas):
-        # If outcomes were predicted, add first one to reasoning
-        if outcome_predictions[0][selected_choice]['predicted_outcome'] is not None:
-            reasoning = f'The predicted outcome for choice {selected_choice} was: '
-            reasoning += outcome_predictions[0][selected_choice]['predicted_outcome']
+    # Returns the outcome prediction (if there was one) and score reasoning for the best sample of the selected choice
+    def get_selected_choice_reasoning(self, selected_choice, best_sample_index, outcome_predictions, reasonings):
+        # If outcomes were predicted, add the best sample outcome prediction reasoning
+        if outcome_predictions[best_sample_index][selected_choice]['predicted_outcome'] is not None:
+            reasoning = f'{outcome_predictions[best_sample_index][selected_choice]['predicted_outcome']} '
         else:
             reasoning = ''
-        # Add predicted KDMA scores to reasoning
-        for target_kdma in target_kdmas:
-            reasoning += f' The predicted scores for {target_kdma["name"]} were '
-            reasoning += f'{str(predicted_kdma_values[selected_choice][target_kdma["kdma"]])}.'
+        # Add the score prediction reasoning for each KDMA
+        for target_kdma in list(reasonings[selected_choice].keys()):
+            reasoning += f'{reasonings[selected_choice][target_kdma][best_sample_index]}'
         return reasoning
 
 
@@ -381,6 +378,7 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
         if all_scalar_targets:
             alignment_function = alignment_utils.AvgDistScalarAlignment()
             selected_choice, probs = alignment_function(predicted_kdma_values, target_kdmas)
+            best_sample_index = alignment_function.get_best_sample_index(predicted_kdma_values, target_kdmas, selected_choice)
         elif all_kde_targets:
             if distribution_matching == 'sample':
                 alignment_function = alignment_utils.MinDistToRandomSampleKdeAlignment()
@@ -391,6 +389,8 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
             else:
                 raise RuntimeError(distribution_matching, "distribution matching function unrecognized.")
             selected_choice, probs = alignment_function(predicted_kdma_values, target_kdmas, kde_norm=kde_norm)
+            best_sample_index = alignment_function.get_best_sample_index(predicted_kdma_values, target_kdmas, selected_choice, kde_norm=kde_norm)
+
         else:
             # TODO: Currently we assume all targets either have scalar values or KDES,
             #       Down the line, we should extend to handling multiple targets of mixed types
@@ -402,8 +402,8 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
 
         selected_choice_idx = choices.index(selected_choice)
         action_to_take = available_actions[selected_choice_idx]
-        action_to_take.justification = self.get_selected_choice_reasoning(selected_choice, outcome_predictions,
-                                                                          predicted_kdma_values, target_kdmas)
+        action_to_take.justification = self.get_selected_choice_reasoning(selected_choice, best_sample_index,
+                                                                          outcome_predictions, reasonings)
 
         # Set up simple diaolg to return for follow-ups
         alignment_system_prompt = baseline_system_prompt()

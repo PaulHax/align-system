@@ -19,6 +19,7 @@ Inputs:
 Returns:
     - The selected choice from kdma_values.keys()
         For example: 'Treat Patient A'
+    - The probability associated with each choice
 '''
 class AlignmentFunction(ABC):
     @abstractmethod
@@ -26,7 +27,8 @@ class AlignmentFunction(ABC):
         '''
         1. Make sure the data is in the right format (scalar vs KDE target)
         2. Compute the distance of each choice to the targets
-        3. Call _select_min_dist_choice() and return selected choice and probs
+        3. Call _select_min_dist_choice() to get selected choice and probs
+        4. Optionally find the index of the best sample for justification
         '''
         pass
 
@@ -54,10 +56,14 @@ class AlignmentFunction(ABC):
         selected_choice = choices[random.choice(max_actions)]
 
         return selected_choice, probs
+    
+    # Given the selected choice, get the index of the sample closest to the target
+    def get_best_sample_index(self, kdma_values, target_kdmas, selected_choice, misaligned=False, kde_norm=None):
+        pass
 
 
 class AvgDistScalarAlignment(AlignmentFunction):
-    def __call__(self, kdma_values, target_kdmas, misaligned=False): 
+    def __call__(self, kdma_values, target_kdmas, misaligned=False):
         '''
         Selects a choice by first averaging score across samples,
         then selecting the one with minimal MSE to the scalar target.
@@ -79,8 +85,23 @@ class AvgDistScalarAlignment(AlignmentFunction):
             distances.append(distance)
 
         selected_choice, probs = self._select_min_dist_choice(choices, distances, misaligned)
-
         return selected_choice, probs
+    
+    def get_best_sample_index(self, kdma_values, target_kdmas, selected_choice, misaligned=False):
+        sample_distances = []
+        sample_indices = range(len(kdma_values[selected_choice][target_kdmas[0]['kdma']]))
+        if len(sample_indices) == 1:
+            best_sample_index = 0
+        else:
+            # For the selected choice, find the sample closest to the target
+            for sample_idx in sample_indices:
+                sample_dist = 0
+                for target_kdma in target_kdmas:
+                    sample = kdma_values[selected_choice][target_kdma['kdma']][sample_idx]
+                    sample_dist += _euclidean_distance(target_kdma['value'], sample)
+                sample_distances.append(sample_dist)
+            best_sample_index, _ = self._select_min_dist_choice(sample_indices, sample_distances, misaligned)
+        return best_sample_index
 
 
 class MinDistToRandomSampleKdeAlignment(AlignmentFunction): 
@@ -91,16 +112,21 @@ class MinDistToRandomSampleKdeAlignment(AlignmentFunction):
         _check_if_targets_are_kde(target_kdmas)
 
         # Sample KDEs to get scalar targets
-        sampled_target_kdmas = []
+        self.sampled_target_kdmas = []
         for target_kdma in target_kdmas:
             sampled_target_kdma = {'kdma':target_kdma.kdma}
             target_kde = kde_utils.load_kde(target_kdma, kde_norm)
             sampled_target_kdma['value']= float(target_kde.sample(1)) # sample returns array
-            sampled_target_kdmas.append(sampled_target_kdma)
+            self.sampled_target_kdmas.append(sampled_target_kdma)
 
         # Use avergae distance to sampled scalar targets
-        AlignmentFunc = AvgDistScalarAlignment()
-        return AlignmentFunc(kdma_values, sampled_target_kdmas, misaligned)
+        avg_alignment_function = AvgDistScalarAlignment()
+        return avg_alignment_function(kdma_values, self.sampled_target_kdmas, misaligned=misaligned)
+    
+    def get_best_sample_index(self, kdma_values, target_kdmas, selected_choice, misaligned=False, kde_norm=None):
+        # Use avergae distance to sampled scalar targets
+        avg_alignment_function = AvgDistScalarAlignment()
+        return avg_alignment_function.get_best_sample_index(kdma_values, self.sampled_target_kdmas, selected_choice, misaligned=misaligned)
 
 
 class MaxLikelihoodKdeAlignment(AlignmentFunction):
@@ -128,9 +154,26 @@ class MaxLikelihoodKdeAlignment(AlignmentFunction):
         distances = [1/(likelihood) for likelihood in likelihoods]
 
         selected_choice, probs = self._select_min_dist_choice(choices, distances, misaligned)
-
         return selected_choice, probs
 
+    def get_best_sample_index(self, kdma_values, target_kdmas, selected_choice, misaligned=False, kde_norm=None):
+        sample_distances = []
+        sample_indices = range(len(kdma_values[selected_choice][target_kdmas[0]['kdma']]))
+        if len(sample_indices) == 1:
+            best_sample_index = 0
+        else:
+            # For the selected choice, find the sample closest to the target
+            for sample_idx in sample_indices:
+                sample_dist = 0
+                for target_kdma in target_kdmas:
+                    target_kde = kde_utils.load_kde(target_kdma, kde_norm)
+                    sample = kdma_values[selected_choice][target_kdma['kdma']][sample_idx]
+                    likelihood = np.exp(target_kde.score_samples(np.array([sample]).reshape(-1, 1))[0])
+                    sample_dist += 1/likelihood
+                sample_distances.append(sample_dist)
+            best_sample_index, _ = self._select_min_dist_choice(sample_indices, sample_distances, misaligned)
+        return best_sample_index
+            
 
 class JsDivergenceKdeAlignment(AlignmentFunction):
     def __call__(self, kdma_values, target_kdmas, misaligned=False, kde_norm='globalnorm'):
@@ -155,8 +198,12 @@ class JsDivergenceKdeAlignment(AlignmentFunction):
             distances.append(distance)
 
         selected_choice, probs = self._select_min_dist_choice(choices, distances, misaligned)
-
         return selected_choice, probs
+    
+    def get_best_sample_index(self, kdma_values, target_kdmas, selected_choice, misaligned=False, kde_norm=None):
+        # Use max likelihood as distance from a sample to the distribution because JS is disitribution to distribution
+        ml_alignment_function = MaxLikelihoodKdeAlignment()
+        return ml_alignment_function.get_best_sample_index(kdma_values, self.sampled_target_kdmas, selected_choice, misaligned=misaligned)
 
 
 # If score is a single value, then set it to a list containing that value
