@@ -87,7 +87,7 @@ class AvgDistScalarAlignment(AlignmentFunction):
         selected_choice, probs = self._select_min_dist_choice(choices, distances, misaligned)
         return selected_choice, probs
     
-    def get_best_sample_index(self, kdma_values, target_kdmas, selected_choice, misaligned=False, kde_norm=None):
+    def get_best_sample_index(self, kdma_values, target_kdmas, selected_choice, misaligned=False):
         sample_distances = []
         sample_indices = range(len(kdma_values[selected_choice][target_kdmas[0]['kdma']]))
         if len(sample_indices) == 1:
