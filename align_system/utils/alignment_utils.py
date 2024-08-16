@@ -120,13 +120,13 @@ class MinDistToRandomSampleKdeAlignment(AlignmentFunction):
             self.sampled_target_kdmas.append(sampled_target_kdma)
 
         # Use avergae distance to sampled scalar targets
-        AlignmentFunc = AvgDistScalarAlignment()
-        return AlignmentFunc(kdma_values, self.sampled_target_kdmas, misaligned=misaligned)
+        avg_alignment_function = AvgDistScalarAlignment()
+        return avg_alignment_function(kdma_values, self.sampled_target_kdmas, misaligned=misaligned)
     
     def get_best_sample_index(self, kdma_values, target_kdmas, selected_choice, misaligned=False, kde_norm=None):
         # Use avergae distance to sampled scalar targets
-        AlignmentFunc = AvgDistScalarAlignment()
-        return AlignmentFunc.get_best_sample_index(kdma_values, self.sampled_target_kdmas, selected_choice, misaligned=misaligned)
+        avg_alignment_function = AvgDistScalarAlignment()
+        return avg_alignment_function.get_best_sample_index(kdma_values, self.sampled_target_kdmas, selected_choice, misaligned=misaligned)
 
 
 class MaxLikelihoodKdeAlignment(AlignmentFunction):
@@ -202,8 +202,8 @@ class JsDivergenceKdeAlignment(AlignmentFunction):
     
     def get_best_sample_index(self, kdma_values, target_kdmas, selected_choice, misaligned=False, kde_norm=None):
         # Use max likelihood as distance from a sample to the distribution because JS is disitribution to distribution
-        AlignmentFunc = MaxLikelihoodKdeAlignment()
-        return AlignmentFunc.get_best_sample_index(kdma_values, self.sampled_target_kdmas, selected_choice, misaligned=misaligned)
+        ml_alignment_function = MaxLikelihoodKdeAlignment()
+        return ml_alignment_function.get_best_sample_index(kdma_values, self.sampled_target_kdmas, selected_choice, misaligned=misaligned)
 
 
 # If score is a single value, then set it to a list containing that value
