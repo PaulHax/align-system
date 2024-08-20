@@ -162,7 +162,7 @@ def main(cfg: DictConfig) -> None:
         while not scenario_complete:
             current_scene_id = current_state.meta_info.scene_id
             if last_scene_id != current_scene_id:
-                log.info(f"[bold] CHANGED SCENE TO: {current_scene_id} [/bold]",
+                log.info(f"[bold]*CHANGED SCENE TO: {current_scene_id}*[/bold]",
                          extra={"markup": True})
                 last_scene_id = current_scene_id
 
