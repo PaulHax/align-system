@@ -137,8 +137,9 @@ def main(cfg: DictConfig) -> None:
             # some nested conversion to dict (from OmegaConf objects)
             # otherwise this can cause some downstream issues with
             # serialization
-            alignment_target.kdma_values = [OmegaConf.to_container(c) for c in
-                                            alignment_target.kdma_values]
+            alignment_target.kdma_values = [OmegaConf.to_container(c)
+                                            if isinstance(c, DictConfig) else c
+                                            for c in alignment_target.kdma_values]
         elif cfg.align_to_target:
             alignment_target = scenario.get_alignment_target()
         else:
