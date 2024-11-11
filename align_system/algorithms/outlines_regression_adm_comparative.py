@@ -267,9 +267,6 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
                                 priornorm_factor=0.5,
                                 **kwargs):
 
-        character_info = outlines_prompts_utils.get_relevant_structured_character_info(scenario_state.characters)
-        scenario_description = scenario_state_description_with_relevant_char_info(scenario_state, character_info)
-
         # Important that the choices stay in the same order as the
         # available actions as we'll use the selected index later to
         # map to the corresponding action
@@ -295,19 +292,18 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
             if kdma not in kdma_descriptions:
                 raise RuntimeError(f'Missing target kdma description for {kdma}')
             else:
-                target_kdmas[kdma_idx]['name'] = kdma_descriptions[kdma]['name']
-                target_kdmas[kdma_idx]['description'] = kdma_descriptions[kdma]['description']
-                target_kdmas[kdma_idx]['factor'] = kdma_descriptions[kdma]['factor']
-                target_kdmas[kdma_idx]['score_examples'] = kdma_descriptions[kdma]['score_examples']
                 if "values" in kdma_descriptions[kdma]['valid_scores']:
-                    target_kdmas[kdma_idx]['valid_scores'] = kdma_descriptions[kdma]['valid_scores']["values"]
+                    kdma_descriptions[kdma]['valid_scores'] = kdma_descriptions[kdma]['valid_scores']["values"]
                 elif "range" in kdma_descriptions[kdma]['valid_scores']:
                     r_params = kdma_descriptions[kdma]['valid_scores']['range']
-                    target_kdmas[kdma_idx]['valid_scores'] = list(range(
+                    kdma_descriptions[kdma]['valid_scores'] = list(range(
                         r_params['min'], r_params['max'] + r_params['step'], r_params['step']))
                 else:
                     raise RuntimeError("Unknown valid scores option, expecting 'values' or 'range'")
+                target_kdmas[kdma_idx].update(kdma_descriptions[kdma])
 
+        character_info = outlines_prompts_utils.get_relevant_structured_character_info(scenario_state.characters, target_kdmas)
+        scenario_description = scenario_state_description_with_relevant_char_info(scenario_state, character_info)
 
         # Predict outcome of selecting each choice - optional
         if predict_outcomes:
