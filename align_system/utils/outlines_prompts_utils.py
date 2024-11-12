@@ -2,6 +2,7 @@ import yaml
 import json
 import outlines
 import copy 
+from functools import reduce
 
 
 def remove_identical_attributes(dicts):
@@ -85,7 +86,7 @@ def remove_identical_attributes(dicts):
     return [filter_dict(d, common_values) for d in dicts]
 
 
-def get_relevant_structured_character_info(characters):
+def get_unique_structured_character_info(characters):
     '''
     Returns a list of character dicts with: name, unstrucutured, id, and relevant_structured
     # where relevant_structured is a string of info unique to each character
@@ -113,4 +114,39 @@ def get_relevant_structured_character_info(characters):
         return_character_dict['relevant_structured'] = json.dumps(relevant_structured_dicts[i])
         return_character_dicts.append(return_character_dict)
         
+    return return_character_dicts
+
+def remove_null_values(data):
+    if isinstance(data, dict):
+        return {k: v for k, v in data.items() if v is not None}
+    elif isinstance(data, list):
+        return [remove_null_values(d) for d in data if isinstance(d, dict)]
+    return data
+
+def get_relevant_structured_character_info(characters, target_kdmas):
+    '''
+    Returns a list of character dicts with: name, unstrucutured, id, and relevant_structured
+    where relevant_structured is a string of relevant strucutured character info
+    '''
+    relevant_fields = []
+    for target_kdma in target_kdmas:
+        relevant_fields.extend(target_kdma['relevant_structured_character_info'])
+
+    return_character_dicts = []
+    for character in characters:
+        character_dict = character.to_dict()
+        return_character_dict = {}
+        return_character_dict['name'] = character_dict['name']
+        return_character_dict['id'] = character_dict['id']
+        return_character_dict['unstructured'] = character_dict['unstructured']
+        relevant_structured_dict = {}
+        for field in relevant_fields:
+            value = reduce(lambda d, key: d.get(key) if d else None, field.split('.'), character_dict)
+            relevant_structured_dict[field] = remove_null_values(value)
+        if relevant_structured_dict:
+            return_character_dict['relevant_structured'] = json.dumps(relevant_structured_dict)
+        else:
+            return_character_dict['relevant_structured'] = None
+        return_character_dicts.append(return_character_dict)
+
     return return_character_dicts
