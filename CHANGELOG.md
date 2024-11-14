@@ -30,6 +30,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * Added the option to normalize KDE targets based on prior data. To use, set `adm.inference_kwargs.kde_norm=priornorm` and `adm.inference_kwargs.priornorm_factor` to the normalization weight you want (1 is fully normalized, 0 is no normalization or `rawscores`, default is 0.5.
 * Added KDMA scaling factor option. Scale factors for each KDMA are added to `align_system/prompt_engineering/kdma_descriptions.yml`
 * Added heuristic treatment options component
+* Added incontext examples to the `input_output.json` files for comparative regression
 
 ### Fixed
 
