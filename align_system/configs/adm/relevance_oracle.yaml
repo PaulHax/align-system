@@ -1,0 +1,7 @@
+instance:
+  _target_: align_system.algorithms.relevance_oracle_adm.OracleADM
+  misaligned: false
+  probabilistic: false
+
+inference_kwargs:
+  distribution_matching: relevance_average
