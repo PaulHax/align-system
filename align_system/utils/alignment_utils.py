@@ -383,14 +383,14 @@ class RelevanceAlignmentFunction(ABC):
 
         if not misaligned:
             # Normalize probs
-            probs = [prob/sum(probs) for prob in probs]
+            probs = [prob/(sum(probs)+eps) for prob in probs]
         else:
             # For misaligned, want to minimize probs, so
             # maximize over inverted probs
             inv_probs = [1/(prob+eps) for prob in probs]
 
             # Normalize probs
-            probs = [prob/sum(inv_probs) for prob in inv_probs]
+            probs = [prob/(sum(inv_probs)+eps) for prob in inv_probs]
 
         if probabilistic:
             selected_choice = np.random.choice(choices, p=probs)
