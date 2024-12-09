@@ -460,7 +460,7 @@ class RelevanceAvgDistScalarAlignment(RelevanceAlignmentFunction):
                     sample_score = kdma_values[selected_choice][target_kdma['kdma']][sample_idx]
                     sample_rel = relevances[selected_choice][target_kdma['kdma']][sample_idx]
                     sample_dist = _euclidean_distance(target_kdma['value'], sample_score)
-                    sample_prob = sample_rel*(1/sample_dist+eps)
+                    sample_prob = sample_rel*(1/(sample_dist+eps))
                 sample_probs.append(sample_prob)
             best_sample_index, _ = self._select_min_dist_choice(sample_indices, sample_probs, misaligned)
         return best_sample_index
