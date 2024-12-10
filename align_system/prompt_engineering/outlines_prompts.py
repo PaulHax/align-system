@@ -446,6 +446,24 @@ def comparative_outcomes_system_prompt():
     """
 
 @outlines.prompt
+def relevance_system_prompt(kdma, kdma_description, kdma_scale_factor):
+    """
+    You are a specialized algorithm tasked with judging medical triage decisions \
+    in a military medical context.  Given a scenario and list of possible responses, \
+    your job is to assess both relevance of {{kdma}} to each response (on a scale from \
+    {{ "%g" | format(0 * kdma_scale_factor) }} to \
+    {{ "%g" | format(1.0 * kdma_scale_factor) }}). \
+
+    {{kdma_description}}
+
+    A relevance of {{ "%g" | format(0 * kdma_scale_factor) }} means that the response is not \
+    relevant to {{kdma}}. A relevance of {{ "%g" | format(1.0 * kdma_scale_factor) }} means \
+    that the response is relevant to {{kdma}}.
+
+    For each response, provide the relevance value and one sentence of reasoning explaining your score.
+    """
+
+@outlines.prompt
 def outcome_prediction_prompt(situation, choices, choice):
     """
     Consider the following scenario:
@@ -684,6 +702,21 @@ def comparative_kdma_score_prediction_prompt(situation, choices, kdma):
     """
 
 @outlines.prompt
+def relevance_prediction_prompt(situation, choices, kdma):
+    """
+    Consider the following scenario and responses:
+    {{ situation }}
+
+    RESPONSES:
+    {% for choice in choices %}
+    - {{ choice }}
+    {% endfor %}
+
+    Provide a value that indicates how relevant each response is to {{kdma}} \
+    with one sentence of reasoning.
+    """
+
+@outlines.prompt
 def relevance_comparative_kdma_score_prediction_prompt(situation, choices, kdma):
     """
     Consider the following scenario and responses:
@@ -742,6 +775,32 @@ def comparative_kdma_score_prediction_json_schema(choices, kdma_scale_factor):
                     }
                 },
                 "required": ["score", "reasoning"]
+            }
+            for choice in choices
+        },
+        "required": list(choices)
+    }
+    return json.dumps(json_schema)
+
+def relevance_prediction_json_schema(choices, kdma_scale_factor):
+    json_schema = {
+        "type": "object",
+        "properties": {
+            choice: {
+                "type": "object",
+                "properties": {
+                    "reasoning": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 512
+                    },
+                    "relevance": {
+                        "type": "integer",
+                        "minimum": 0 * kdma_scale_factor,
+                        "maximum": 1 * kdma_scale_factor
+                    }
+                },
+                "required": ["relevance", "reasoning"]
             }
             for choice in choices
         },
