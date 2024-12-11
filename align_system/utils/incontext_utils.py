@@ -18,8 +18,8 @@ from align_system.prompt_engineering.outlines_prompts import (
     comparative_kdma_score_prediction_json_schema,
     relevance_comparative_kdma_score_prediction_prompt,
     relevance_comparative_kdma_score_prediction_json_schema,
-    relevance_prediction_prompt,
-    relevance_prediction_json_schema
+    relevance_classification_prompt,
+    relevance_classification_json_schema
 )
 
 
@@ -494,17 +494,16 @@ class RelevanceIncontextExampleGenerator(IncontextExampleGenerator):
                     if kdma_value is None:
                         icl_response[choice] = {}
                         icl_response[choice]['reasoning'] = 'The reponse is irrelevant.'
-                        icl_response[choice]['relevance'] = 0
+                        icl_response[choice]['relevant'] = 'no'
                     else:
                         # Groundtruth KDMA values are 0-1, but ADM may predict on a different scale
-                        scaled_rel_value = int(1 * target_kdma["factor"])
                         icl_response[choice] = {}
                         icl_response[choice]['reasoning'] = self.get_chain_of_thought_reasoning(target_kdma, action,
                                                                                                 example['state'], choice)
-                        icl_response[choice]['relevance'] = scaled_rel_value
+                        icl_response[choice]['relevant'] = 'yes'
                     included_choices.append(choice)
                 # Check if response is valid against json schema
-                correct_schema = json.loads(relevance_prediction_json_schema(included_choices, target_kdma["factor"]))
+                correct_schema = json.loads(relevance_classification_json_schema(included_choices, target_kdma["factor"]))
                 validate(instance=icl_response, schema=correct_schema)
 
                 # Get example prompt
@@ -521,7 +520,7 @@ class RelevanceIncontextExampleGenerator(IncontextExampleGenerator):
                 for choice in included_choices:
                     # TODO: Include outcome prediction for ICL examples?
                     included_icl_choices_with_outcomes[choice] = {'predicted_outcome':None}
-                icl_prompt = relevance_prediction_prompt(icl_scenario_description,
+                icl_prompt = relevance_classification_prompt(icl_scenario_description,
                                                                     included_icl_choices_with_outcomes,
                                                                     sys_kdma_name)
 
