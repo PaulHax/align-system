@@ -446,21 +446,14 @@ def comparative_outcomes_system_prompt():
     """
 
 @outlines.prompt
-def relevance_system_prompt(kdma, kdma_description, kdma_scale_factor):
+def relevance_classification_system_prompt(kdma, kdma_description, kdma_scale_factor):
     """
-    You are a specialized algorithm tasked with judging medical triage decisions \
+    You are a specialized algorithm tasked with considering medical triage decisions \
     in a military medical context.  Given a scenario and list of possible responses, \
-    your job is to assess both relevance of {{kdma}} to each response (on a scale from \
-    {{ "%g" | format(0 * kdma_scale_factor) }} to \
-    {{ "%g" | format(1.0 * kdma_scale_factor) }}). \
+    your job is to assess the relevance of {{kdma}} to each response.
 
-    {{kdma_description}}
-
-    A relevance of {{ "%g" | format(0 * kdma_scale_factor) }} means that the response is not \
-    relevant to {{kdma}}. A relevance of {{ "%g" | format(1.0 * kdma_scale_factor) }} means \
-    that the response is relevant to {{kdma}}.
-
-    For each response, provide the relevance value and one sentence of reasoning explaining your score.
+    For each response, provide a sentence of reasoning and your answer of either \
+    yes or no, where yes means {{kdma}} is relevant and no means {{kdma}} is irrelevant.
     """
 
 @outlines.prompt
@@ -702,7 +695,7 @@ def comparative_kdma_score_prediction_prompt(situation, choices, kdma):
     """
 
 @outlines.prompt
-def relevance_prediction_prompt(situation, choices, kdma):
+def relevance_classification_prompt(situation, choices, kdma):
     """
     Consider the following scenario and responses:
     {{ situation }}
@@ -712,8 +705,8 @@ def relevance_prediction_prompt(situation, choices, kdma):
     - {{ choice }}
     {% endfor %}
 
-    Provide a value that indicates how relevant each response is to {{kdma}} \
-    with one sentence of reasoning.
+    Inidicate whether or not each response is relevant to {{kdma}} with either yes (relevant) \
+    or no (irrelevant) and provide one sentence of reasoning.
     """
 
 @outlines.prompt
@@ -782,7 +775,7 @@ def comparative_kdma_score_prediction_json_schema(choices, kdma_scale_factor):
     }
     return json.dumps(json_schema)
 
-def relevance_prediction_json_schema(choices, kdma_scale_factor):
+def relevance_classification_json_schema(choices, kdma_scale_factor):
     json_schema = {
         "type": "object",
         "properties": {
@@ -794,13 +787,12 @@ def relevance_prediction_json_schema(choices, kdma_scale_factor):
                         "minLength": 1,
                         "maxLength": 512
                     },
-                    "relevance": {
-                        "type": "integer",
-                        "minimum": 0 * kdma_scale_factor,
-                        "maximum": 1 * kdma_scale_factor
+                    "relevant": {
+                        "type": "string",
+                        "enum": ["yes", "no"]
                     }
                 },
-                "required": ["relevance", "reasoning"]
+                "required": ["relevant", "reasoning"]
             }
             for choice in choices
         },
