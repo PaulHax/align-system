@@ -136,7 +136,9 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
             use_icl = True
             icl_example_generator = incontext_utils.RelevanceIncontextExampleGenerator(incontext_settings,
                                                                                        target_kdmas)
-        icl_example_responses = []
+        icl_example_responses = {}
+        for target_kdma in target_kdmas:
+            icl_example_responses[target_kdma['name']] = []
         relevance_dialogs = []
         # loop over samples
         for sample_idx in range(num_samples):
@@ -163,7 +165,7 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
                             {"role": "user", "content": icl_sample['prompt']},
                             {"role": "assistant", "content": f'{icl_sample["response"]}'}
                         ])
-                        icl_example_responses.append(icl_sample["response"])
+                        icl_example_responses[target_kdma['name']].append(icl_sample["response"])
 
                 predict_relevance_prompt = relevance_classification_prompt(scenario_description,
                                                                        choices,
@@ -221,7 +223,7 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
                     else:
                         predictions[choice][kdma_key].append(0)
 
-        return predictions, reasonings
+        return predictions, reasonings, icl_example_responses
 
     def sample_kdma_score_predictions(self,
                                       scenario_state,
@@ -247,8 +249,10 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
             icl_example_generator = incontext_utils.ComparativeRegressionIncontextExampleGenerator(incontext_settings,
                                                                                                    target_kdmas)
 
+        icl_example_responses = {}
+        for target_kdma in target_kdmas:
+            icl_example_responses[target_kdma['kdma']] = []
         kdma_dialogs = []
-        icl_example_responses = []
         # loop over samples
         for sample_idx in range(num_samples):
             # loop over target kdmas
@@ -287,7 +291,7 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
                             {"role": "user", "content": icl_sample['prompt']},
                             {"role": "assistant", "content": f'{icl_sample["response"]}'}
                         ])
-                        icl_example_responses.append(icl_sample["response"])
+                        icl_example_responses[target_kdma['kdma']].append(icl_sample["response"])
 
 
                 predict_kdma_prompt = comparative_kdma_score_prediction_prompt(scenario_description,
@@ -352,7 +356,7 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
         return predictions, reasonings, icl_example_responses
 
     # Returns the outcome prediction (if there was one) and score reasoning for the best sample of the selected choice
-    def get_selected_choice_reasoning(self, selected_choice, best_sample_index, outcome_predictions, reasonings):
+    def get_selected_choice_reasoning(self, selected_choice, best_sample_index, outcome_predictions, reasonings, relevance_reasonings=None):
         # If outcomes were predicted, add the best sample outcome prediction reasoning
         if outcome_predictions[best_sample_index][selected_choice]['predicted_outcome'] is not None:
             reasoning = f'{outcome_predictions[best_sample_index][selected_choice]["predicted_outcome"]} '
@@ -360,6 +364,9 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
             reasoning = ''
         # Add the score prediction reasoning for each KDMA
         for target_kdma in list(reasonings[selected_choice].keys()):
+            # If relevance was predicted add relevance reasoning
+            if relevance_reasonings:
+                reasoning += f'{relevance_reasonings[selected_choice][target_kdma][best_sample_index]} '
             reasoning += f'{reasonings[selected_choice][target_kdma][best_sample_index]}'
         return reasoning
 
@@ -440,7 +447,7 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
 
         # Predict relevance of each KDMA to each choice - optional
         if predict_relevance:
-            predicted_relevance, relevance_reasoning = self.sample_relevance_predictions(
+            predicted_relevance, relevance_reasonings, relevance_icl_responses = self.sample_relevance_predictions(
                 scenario_state, scenario_description, choices, target_kdmas, available_actions,
                 num_samples, generator_batch_size, incontext_settings=kwargs.get("incontext", {})
             )
@@ -470,6 +477,7 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
             log.info("Predicted Relevance Values:")
             log.info(json.dumps(predicted_relevance))
             choice_info['predicted_relevance'] = predicted_relevance
+            choice_info['relevance_icl_example_responses'] = relevance_icl_responses
 
         # Get type of targets
         all_scalar_targets = True
@@ -542,8 +550,13 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
 
         selected_choice_idx = choices.index(selected_choice)
         action_to_take = available_actions[selected_choice_idx]
-        action_to_take.justification = self.get_selected_choice_reasoning(selected_choice, best_sample_index,
-                                                                          outcome_predictions, reasonings)
+        if predict_relevance:
+            action_to_take.justification = self.get_selected_choice_reasoning(selected_choice, best_sample_index,
+                                                                              outcome_predictions, reasonings,
+                                                                              relevance_reasonings)
+        else:
+            action_to_take.justification = self.get_selected_choice_reasoning(selected_choice, best_sample_index,
+                                                                              outcome_predictions, reasonings)
 
         # Set up simple diaolg to return for follow-ups
         alignment_system_prompt = baseline_system_prompt()
