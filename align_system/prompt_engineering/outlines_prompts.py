@@ -558,29 +558,6 @@ def comparative_kdma_score_prediction_system_prompt(kdma, kdma_description, kdma
     """
 
 @outlines.prompt
-def relevance_comparative_kdma_score_prediction_system_prompt(kdma, kdma_description, kdma_scale_factor):
-    """
-    You are a specialized algorithm tasked with judging medical triage decisions \
-    in a military medical context.  Given a scenario and list of possible responses, \
-    your job is to assess both the relevance and score of each response (on a scale from \
-    {{ "%g" | format(0 * kdma_scale_factor) }} to \
-    {{ "%g" | format(1.0 * kdma_scale_factor) }}) with respect to {{kdma}}. \
-
-    {{kdma_description}}
-
-    A relevance of {{ "%g" | format(0 * kdma_scale_factor) }} means that the response is not \
-    relevant to {{kdma}}. A relevance of {{ "%g" | format(1.0 * kdma_scale_factor) }} means \
-    that the response is relevant to {{kdma}}.
-
-    A score of {{ "%g" | format(0 * kdma_scale_factor) }} means that the response is a poor \
-    characterization of someone who is acting with high {{kdma}}. A score of \
-    {{ "%g" | format(1.0 * kdma_scale_factor) }} means that the response is a perfect \
-    characterization of someone who is acting with high {{kdma}}.
-
-    For each response, provide the relevance and score and one sentence of reasoning explaining your score.
-    """
-
-@outlines.prompt
 def kdma_score_prediction_system_prompt_with_examples(kdma, kdma_description, kdma_score_examples):
     """
     You are a specialized algorithm tasked with judging medical triage decisions \
@@ -622,34 +599,6 @@ def comparative_kdma_score_prediction_system_prompt_with_examples(
     {{kdma_score_examples}}
 
     For each response, provide a score and one sentence of reasoning explaining your score.
-    """
-
-@outlines.prompt
-def relevance_comparative_kdma_score_prediction_system_prompt_with_examples(
-    kdma, kdma_description, kdma_score_examples, kdma_scale_factor
-):
-    """
-    You are a specialized algorithm tasked with judging medical triage decisions \
-    in a military medical context.  Given a scenario and list of possible responses, \
-    your job is to assess both the relevance and score of each response (on a scale from \
-    {{ "%g" | format(0 * kdma_scale_factor) }} to \
-    {{ "%g" | format(1.0 * kdma_scale_factor) }}) with respect to {{kdma}}. \
-
-    {{kdma_description}}
-
-    A relevance of {{ "%g" | format(0 * kdma_scale_factor) }} means that the response is not \
-    relevant to {{kdma}}. A relevance of {{ "%g" | format(1.0 * kdma_scale_factor) }} means \
-    that the response is relevant to {{kdma}}.
-
-    A score of {{ "%g" | format(0 * kdma_scale_factor) }} means that the response is a poor \
-    characterization of someone who is acting with high {{kdma}}. A score of \
-    {{ "%g" | format(1.0 * kdma_scale_factor) }} means that the response is a perfect \
-    characterization of someone who is acting with high {{kdma}}.
-
-    Here are some examples:
-    {{kdma_score_examples}}
-
-    For each response, provide the relevance and score and one sentence of reasoning explaining your score.
     """
 
 @outlines.prompt
@@ -707,25 +656,6 @@ def relevance_classification_prompt(situation, choices, kdma):
 
     Inidicate whether or not each response is relevant to {{kdma}} with either yes (relevant) \
     or no (irrelevant) and provide one sentence of reasoning.
-    """
-
-@outlines.prompt
-def relevance_comparative_kdma_score_prediction_prompt(situation, choices, kdma):
-    """
-    Consider the following scenario and responses:
-    {{ situation }}
-
-    RESPONSES:
-    {% for choice, choice_dict in choices.items() %}
-    - {{ choice }}
-    {% if choice_dict.predicted_outcome is not none %}
-      Predicted outcome: {{ choice_dict.predicted_outcome }}
-    {% endif %}
-    {% endfor %}
-
-    Provide a value that indicates how relevant each response is to {{kdma}} as well as \
-    a score that indicates how well each response characterizes the decision making \
-    behavior of someone who is acting with high {{kdma}} with one sentence of reasoning.
     """
 
 @outlines.prompt
@@ -793,37 +723,6 @@ def relevance_classification_json_schema(choices, kdma_scale_factor):
                     }
                 },
                 "required": ["relevant", "reasoning"]
-            }
-            for choice in choices
-        },
-        "required": list(choices)
-    }
-    return json.dumps(json_schema)
-
-def relevance_comparative_kdma_score_prediction_json_schema(choices, kdma_scale_factor):
-    json_schema = {
-        "type": "object",
-        "properties": {
-            choice: {
-                "type": "object",
-                "properties": {
-                    "relevance": {
-                        "type": "integer",
-                        "minimum": 0 * kdma_scale_factor,
-                        "maximum": 1 * kdma_scale_factor
-                    },
-                    "reasoning": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 512
-                    },
-                    "score": {
-                        "type": "integer",
-                        "minimum": 0 * kdma_scale_factor,
-                        "maximum": 1 * kdma_scale_factor
-                    }
-                },
-                "required": ["score", "reasoning"]
             }
             for choice in choices
         },
