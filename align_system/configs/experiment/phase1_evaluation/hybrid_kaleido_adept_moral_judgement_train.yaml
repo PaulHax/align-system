@@ -12,6 +12,7 @@ interface:
   session_type: adept
   scenario_ids:
     - DryRunEval.MJ1
+    - DryRunEval.MJ1-w-events
     - DryRunEval.MJ3
   training_session: full
 
