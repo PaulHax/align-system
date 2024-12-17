@@ -452,6 +452,8 @@ def relevance_classification_system_prompt(kdma, kdma_description, kdma_scale_fa
     in a military medical context.  Given a scenario and list of possible responses, \
     your job is to assess the relevance of {{kdma}} to each response.
 
+    {{kdma_description}}
+
     For each response, provide a sentence of reasoning and your answer of either \
     yes or no, where yes means {{kdma}} is relevant and no means {{kdma}} is irrelevant.
     """

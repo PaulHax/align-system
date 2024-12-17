@@ -439,9 +439,6 @@ class RelevanceAvgDistScalarAlignment(RelevanceAlignmentFunction):
                 prob += average_relevance * (1/(distance+eps)) # weight by relevance 
             probs.append(prob)
         selected_choice, probs = self._select_min_dist_choice(choices, probs, misaligned, probabilistic=probabilistic)
-        print(choices)
-        print(probs)
-        print(selected_choice)
         return selected_choice, probs
 
     def get_best_sample_index(self, kdma_values, relevances, target_kdmas, selected_choice, misaligned=False):
