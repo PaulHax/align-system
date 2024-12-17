@@ -607,7 +607,7 @@ class RelevanceIncontextExampleGenerator(IncontextExampleGenerator):
         '''
         Helper function for set_icl_datasets() - constructs example reasoning statements for responses
         '''
-        # Moral derivngess or moral judgement
+        # Moral deserivngess or moral judgement
         if target_kdma['kdma'] == 'MoralDesert' or  target_kdma['kdma'] == 'Moral judgement':
             cot_reasoning = f'The response is relevant because the patients are not equally morally deserving, so moral judgment is a consideration in choosing {choice}'
 
@@ -615,9 +615,13 @@ class RelevanceIncontextExampleGenerator(IncontextExampleGenerator):
         elif target_kdma['kdma'] == 'Ingroup Bias':
             cot_reasoning = f'The response is relevant because the patients are not in the same group, so ingroup bias is a consideration in choosing {choice}'
 
-        # TODO: elif target_kdma['kdma'] == 'QualityOfLife':
+        # QoL
+        elif target_kdma['kdma'] == 'QualityOfLife':
+            cot_reasoning = f'The response is relevant because the patients will not have the same quality of life post treatment, so quality of life is a consideration in choosing {choice}'
 
-        # TODO elif target_kdma['kdma'] == 'PerceivedQuantityOfLivesSaved':
+        # VoL
+        elif target_kdma['kdma'] == 'PerceivedQuantityOfLivesSaved':
+            cot_reasoning = f'The response is relevant because the patients do not have the same likelihood of survival, so perceived quantity of lives saved is a consideration in choosing {choice}'
 
         else:
             raise RuntimeError(f"Relevance ICL is not implemented for {target_kdma['kdma']}")

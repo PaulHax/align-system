@@ -367,7 +367,7 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
             # If relevance was predicted add relevance reasoning
             if relevance_reasonings:
                 reasoning += f'{relevance_reasonings[selected_choice][target_kdma][best_sample_index]} '
-            reasoning += f'{reasonings[selected_choice][target_kdma][best_sample_index]}'
+            reasoning += f'{reasonings[selected_choice][target_kdma][best_sample_index]} '
         return reasoning
 
 
@@ -490,15 +490,29 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
 
         # Use relevance in alignment function
         if predict_relevance:
-            # Select aligned choice
             if all_scalar_targets:
-                alignment_function = alignment_utils.RelevanceAvgDistScalarAlignment()
-                selected_choice, probs = alignment_function(predicted_kdma_values, predicted_relevance,
-                                                            target_kdmas, probabilistic=self.probabilistic)
+                if distribution_matching == 'relevance_average':
+                    alignment_function = alignment_utils.RelevanceAvgDistScalarAlignment()
+                    selected_choice, probs = alignment_function(predicted_kdma_values, predicted_relevance,
+                                                                target_kdmas, probabilistic=self.probabilistic)
+                else:
+                    raise RuntimeError(distribution_matching, "distribution matching function unimplemented for scalar targets with relevance.")
                 best_sample_index = alignment_function.get_best_sample_index(predicted_kdma_values,
-                                                                            predicted_relevance,
-                                                                            target_kdmas, selected_choice)
-            # TODO elif all_kde_targets:
+                                                                                predicted_relevance,
+                                                                                target_kdmas, selected_choice)
+            elif all_kde_targets:
+                if distribution_matching == 'relevance_cumulative_kde':
+                    alignment_function = alignment_utils.RelevanceCumulativeJsDivergenceKdeAlignment()
+                    selected_choice, probs = alignment_function(predicted_kdma_values, predicted_relevance,
+                                                                target_kdmas, self.choice_history,
+                                                                kde_norm=kde_norm, priornorm_factor=priornorm_factor,
+                                                                probabilistic=self.probabilistic)
+                else:
+                    raise RuntimeError(distribution_matching, "distribution matching function unimplemented for KDE targets with relevance.")
+                best_sample_index = alignment_function.get_best_sample_index(predicted_kdma_values,
+                                                                             predicted_relevance,
+                                                                             target_kdmas, selected_choice,
+                                                                             kde_norm=kde_norm)
             else:
                 # TODO: Currently we assume all targets either have scalar values or KDES,
                 #       Down the line, we should extend to handling multiple targets of mixed types
