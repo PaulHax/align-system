@@ -65,9 +65,17 @@ class OracleADM(ActionBasedADM):
                 )
             # TODO: elif distribution_matching == 'relevance_cumulative_average':
             else:
-                raise RuntimeError(distribution_matching, "distribution matching function unrecognized for scalar targets.")
+                raise RuntimeError(distribution_matching, "distribution matching function unimplemented for scalar targets with relevance.")
 
-        # TODO: elif all_kde_targets:
+        elif all_kde_targets:
+            if distribution_matching == 'relevance_cumulative_kde':
+                alignment_function = alignment_utils.RelevanceCumulativeJsDivergenceKdeAlignment()
+                selected_choice_id, probs = alignment_function(
+                    gt_kdma_values, gt_relevance_values, target_kdmas, self.choice_history, misaligned=self.misaligned,
+                    kde_norm=kde_norm, priornorm_factor=priornorm_factor, probabilistic=self.probabilistic
+                )
+            else:
+                raise RuntimeError(distribution_matching, "distribution matching function unimplemented for KDE targets with relevance.")
         else:
             # TODO: Currently we assume all targets either have scalar values or KDES,
             #       Down the line, we should extend to handling multiple targets of mixed types

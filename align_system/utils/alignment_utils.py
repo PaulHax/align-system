@@ -470,6 +470,43 @@ class RelevanceAvgDistScalarAlignment(RelevanceAlignmentFunction):
         return best_sample_index
 
 
+class RelevanceCumulativeJsDivergenceKdeAlignment(RelevanceAlignmentFunction):
+    def __call__(self, kdma_values, relevances, target_kdmas, choice_history, misaligned=False, kde_norm='globalnorm', priornorm_factor=0.5, probabilistic=False):
+        '''
+        Creates potential cumulative KDEs (with history) for each choice by adding mean of sampled score predictions
+        Returns the selected choice resulting in cumulative KDE with minimum JS divergence to target KDE
+        '''
+        kdma_values = _handle_single_value(kdma_values, target_kdmas)
+        relevances = _handle_single_value(relevances, target_kdmas)
+        _check_if_targets_are_kde(target_kdmas)
+
+        # Get predicted KDE for each choice and get distance to target
+        probs = []
+        choices = list(kdma_values.keys())
+        for choice in choices:
+            prob = 0.
+            for target_kdma in target_kdmas:
+                if isinstance(target_kdma, KDMAValue):
+                    target_kdma = target_kdma.to_dict()
+                if target_kdma['kdma'] not in choice_history:
+                    choice_history[target_kdma['kdma']] = []
+                target_kde = kde_utils.load_kde(target_kdma, kde_norm, priornorm_factor)
+                predicted_samples = kdma_values[choice][target_kdma['kdma']]
+                history_and_predicted_samples = choice_history[target_kdma['kdma']] + [np.mean(predicted_samples)]
+                predicted_kde = kde_utils.get_kde_from_samples(history_and_predicted_samples)
+                distance = kde_utils.js_distance(target_kde, predicted_kde, 100)
+                rel_samples = relevances[choice][target_kdma['kdma']]
+                average_relevance = (sum(rel_samples) / len(rel_samples))
+                prob += average_relevance * (1/(distance+eps)) # weight by relevance
+            probs.append(prob)
+        selected_choice, probs = self._select_min_dist_choice(choices, probs, misaligned, probabilistic=probabilistic)
+        return selected_choice, probs
+
+    def get_best_sample_index(self, kdma_values, relevances, target_kdmas, selected_choice, misaligned=False, kde_norm=None):
+        # Use max likelihood as distance from a sample to the distribution because JS is disitribution to distribution
+        ml_alignment_function = MaxLikelihoodKdeAlignment()
+        return ml_alignment_function.get_best_sample_index(kdma_values, target_kdmas, selected_choice, misaligned=misaligned, kde_norm=kde_norm)
+
 
 # If score is a single value, then set it to a list containing that value
 def _handle_single_value(kdma_values, target_kdmas):
