@@ -14,13 +14,13 @@ adm:
     sampler:
       _target_: outlines.samplers.GreedySampler
   inference_kwargs:
-    distribution_matching: relevance_cumulative_kde
+    distribution_matching: relevance_cumulative_kde # use relevance
     kde_norm: priornorm
     priornorm_factor: 0.5 # priornorm weighting
     kdma_score_examples: true
     num_samples: 1
     predict_outcomes: false
-    predict_relevance: true
+    predict_relevance: true # use relevance
     generator_batch_size: 5
     incontext:
       most_similar_first: false
