@@ -125,7 +125,6 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
                                      choices,
                                      target_kdmas,
                                      available_actions,
-                                     num_samples=1,
                                      batch_size=5,
                                      incontext_settings={}):
         '''
@@ -140,40 +139,38 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
         for target_kdma in target_kdmas:
             icl_example_responses[target_kdma['name']] = []
         relevance_dialogs = []
-        # loop over samples
-        for sample_idx in range(num_samples):
-            # loop over target kdmas
-            for target_kdma in target_kdmas:
-                relevance_sys_prompt = relevance_classification_system_prompt(target_kdma['name'],
-                                                               target_kdma['description'],
-                                                               target_kdma['factor'])
+        # loop over target kdmas
+        for target_kdma in target_kdmas:
+            relevance_sys_prompt = relevance_classification_system_prompt(target_kdma['name'],
+                                                            target_kdma['description'],
+                                                            target_kdma['factor'])
 
-                icl_examples = []
-                if use_icl:
-                    prompt_to_match = relevance_classification_prompt(scenario_description,
-                                                                  choices,
-                                                                  target_kdma['name'])
-                    selected_icl_examples = icl_example_generator.select_icl_examples(
-                        sys_kdma_name=target_kdma['kdma'],
-                        scenario_description_to_match=scenario_description,
-                        prompt_to_match=prompt_to_match,
-                        state_comparison=scenario_state,
-                        actions=available_actions
-                    )
-                    for icl_sample in selected_icl_examples:
-                        icl_examples.extend([
-                            {"role": "user", "content": icl_sample['prompt']},
-                            {"role": "assistant", "content": f'{icl_sample["response"]}'}
-                        ])
-                        icl_example_responses[target_kdma['name']].append(icl_sample["response"])
+            icl_examples = []
+            if use_icl:
+                prompt_to_match = relevance_classification_prompt(scenario_description,
+                                                                choices,
+                                                                target_kdma['name'])
+                selected_icl_examples = icl_example_generator.select_icl_examples(
+                    sys_kdma_name=target_kdma['kdma'],
+                    scenario_description_to_match=scenario_description,
+                    prompt_to_match=prompt_to_match,
+                    state_comparison=scenario_state,
+                    actions=available_actions
+                )
+                for icl_sample in selected_icl_examples:
+                    icl_examples.extend([
+                        {"role": "user", "content": icl_sample['prompt']},
+                        {"role": "assistant", "content": f'{icl_sample["response"]}'}
+                    ])
+                    icl_example_responses[target_kdma['name']].append(icl_sample["response"])
 
-                predict_relevance_prompt = relevance_classification_prompt(scenario_description,
-                                                                       choices,
-                                                                       target_kdma['name'])
-                dialog = [{'role': 'system', 'content': relevance_sys_prompt}]
-                dialog.extend(icl_examples)
-                dialog.append({'role': 'user', 'content': predict_relevance_prompt})
-                relevance_dialogs.append(dialog)
+            predict_relevance_prompt = relevance_classification_prompt(scenario_description,
+                                                                    choices,
+                                                                    target_kdma['name'])
+            dialog = [{'role': 'system', 'content': relevance_sys_prompt}]
+            dialog.extend(icl_examples)
+            dialog.append({'role': 'user', 'content': predict_relevance_prompt})
+            relevance_dialogs.append(dialog)
 
         # Need to set the whitespace_pattern to prevent the state
         # machine from looping indefinitely in some cases, see:
@@ -207,21 +204,17 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
         for choice in choices:
             predictions[choice] = {}
             reasonings[choice] = {}
-            for target_kdma in target_kdmas:
-                predictions[choice][target_kdma['kdma']] = []
-                reasonings[choice][target_kdma['kdma']] = []
 
         # Add responses to output dictionaries
-        for sample_idx in range(num_samples):
-            for kdma_idx in range(len(target_kdmas)):
-                rel_prediction = relevance_responses[sample_idx][kdma_idx]
-                kdma_key = target_kdmas[kdma_idx]['kdma']
-                for choice in choices:
-                    reasonings[choice][kdma_key].append(rel_prediction[choice]['reasoning'])
-                    if rel_prediction[choice]['relevant'] == 'yes':
-                        predictions[choice][kdma_key].append(1)
-                    else:
-                        predictions[choice][kdma_key].append(0)
+        for kdma_idx in range(len(target_kdmas)):
+            rel_prediction = relevance_responses[0][kdma_idx]
+            kdma_key = target_kdmas[kdma_idx]['kdma']
+            for choice in choices:
+                reasonings[choice][kdma_key] = rel_prediction[choice]['reasoning']
+                if rel_prediction[choice]['relevant'] == 'yes':
+                    predictions[choice][kdma_key] = 1
+                else:
+                    predictions[choice][kdma_key] = 0
 
         return predictions, reasonings, icl_example_responses
 
@@ -366,7 +359,7 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
         for target_kdma in list(reasonings[selected_choice].keys()):
             # If relevance was predicted add relevance reasoning
             if relevance_reasonings:
-                reasoning += f'{relevance_reasonings[selected_choice][target_kdma][best_sample_index]} '
+                reasoning += f'{relevance_reasonings[selected_choice][target_kdma]} '
             reasoning += f'{reasonings[selected_choice][target_kdma][best_sample_index]} '
         return reasoning
 
@@ -449,7 +442,7 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
         if predict_relevance:
             predicted_relevance, relevance_reasonings, relevance_icl_responses = self.sample_relevance_predictions(
                 scenario_state, scenario_description, choices, target_kdmas, available_actions,
-                num_samples, generator_batch_size, incontext_settings=kwargs.get("incontext", {})
+                generator_batch_size, incontext_settings=kwargs.get("incontext", {})
             )
 
         # Predict kdma values
@@ -498,7 +491,6 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
                 else:
                     raise RuntimeError(distribution_matching, "distribution matching function unimplemented for scalar targets with relevance.")
                 best_sample_index = alignment_function.get_best_sample_index(predicted_kdma_values,
-                                                                                predicted_relevance,
                                                                                 target_kdmas, selected_choice)
             elif all_kde_targets:
                 if distribution_matching == 'relevance_cumulative_kde':
@@ -510,7 +502,6 @@ class OutlinesTransformersComparativeRegressionADM(OutlinesTransformersADM):
                 else:
                     raise RuntimeError(distribution_matching, "distribution matching function unimplemented for KDE targets with relevance.")
                 best_sample_index = alignment_function.get_best_sample_index(predicted_kdma_values,
-                                                                             predicted_relevance,
                                                                              target_kdmas, selected_choice,
                                                                              kde_norm=kde_norm)
             else:

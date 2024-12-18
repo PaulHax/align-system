@@ -357,8 +357,8 @@ Abstract class for alignment function with relevance
 Inputs:
     - kdma_values: Dictionary of choices and KDMA score(s) (between 0 and 1)
         For example: {'Treat Patient A':{'Moral judgement': [0.1,0.1,0.2], ...}, 'Treat Patient B':{...}, ... }
-    - relevances: Dictionary of choices and KDMA relevance(s) (between 0 and 1)
-        For example: {'Treat Patient A':{'Moral judgement': [1.0], ...}, 'Treat Patient B':{...}, ... }
+    - relevances: Dictionary of choices and KDMA relevance (0 or 1)
+        For example: {'Treat Patient A':{'Moral judgement': 1, ...}, 'Treat Patient B':{...}, ... }
     - target_kdmas: A list of KDMA alignment targets (typically alignment_target.kdma_values)
         For example: [{'kdma':'Moral judgement', 'value':0}, ...] or [{'kdma':'Moral judgement', 'kdes':{...}}, ...]
     - misaligned (optional): If true will pick the least aligned option (default is false)
@@ -426,7 +426,6 @@ class RelevanceAvgDistScalarAlignment(RelevanceAlignmentFunction):
         Returns the selected choice.
         '''
         kdma_values = _handle_single_value(kdma_values, target_kdmas)
-        relevances = _handle_single_value(relevances, target_kdmas)
         _check_if_targets_are_scalar(target_kdmas)
 
         # Get distance from average of predicted scores to targets
@@ -440,34 +439,17 @@ class RelevanceAvgDistScalarAlignment(RelevanceAlignmentFunction):
                 kdma = target_kdma['kdma']
                 score_samples = kdma_values[choice][kdma]
                 average_score = (sum(score_samples) / len(score_samples))
-                rel_samples = relevances[choice][kdma]
-                average_relevance = (sum(rel_samples) / len(rel_samples))
+                relevance = relevances[choice][kdma]
                 distance = _euclidean_distance(target_kdma['value'], average_score)
-                prob += average_relevance * (1/(distance+eps)) # weight by relevance 
+                prob += relevance * (1/(distance+eps)) # weight by relevance 
             probs.append(prob)
         selected_choice, probs = self._select_min_dist_choice(choices, probs, misaligned, probabilistic=probabilistic)
         return selected_choice, probs
 
-    def get_best_sample_index(self, kdma_values, relevances, target_kdmas, selected_choice, misaligned=False):
-        sample_probs = []
-        sample_indices = range(len(kdma_values[selected_choice][target_kdmas[0]['kdma']]))
-        if len(sample_indices) == 1:
-            best_sample_index = 0
-        else:
-            # For the selected choice, find the sample closest to the target
-            for sample_idx in sample_indices:
-                sample_prob = 0
-                for target_kdma in target_kdmas:
-                    if isinstance(target_kdma, KDMAValue):
-                        target_kdma = target_kdma.to_dict()
-
-                    sample_score = kdma_values[selected_choice][target_kdma['kdma']][sample_idx]
-                    sample_rel = relevances[selected_choice][target_kdma['kdma']][sample_idx]
-                    sample_dist = _euclidean_distance(target_kdma['value'], sample_score)
-                    sample_prob = sample_rel*(1/(sample_dist+eps))
-                sample_probs.append(sample_prob)
-            best_sample_index, _ = self._select_min_dist_choice(sample_indices, sample_probs, misaligned)
-        return best_sample_index
+    def get_best_sample_index(self, kdma_values, target_kdmas, selected_choice, misaligned=False):
+        # Use max likelihood as distance from a sample to the distribution because JS is disitribution to distribution
+        avg_alignment_function = AvgDistScalarAlignment()
+        return avg_alignment_function.get_best_sample_index(kdma_values, target_kdmas, selected_choice, misaligned=misaligned)
 
 
 class RelevanceCumulativeJsDivergenceKdeAlignment(RelevanceAlignmentFunction):
@@ -502,7 +484,7 @@ class RelevanceCumulativeJsDivergenceKdeAlignment(RelevanceAlignmentFunction):
         selected_choice, probs = self._select_min_dist_choice(choices, probs, misaligned, probabilistic=probabilistic)
         return selected_choice, probs
 
-    def get_best_sample_index(self, kdma_values, relevances, target_kdmas, selected_choice, misaligned=False, kde_norm=None):
+    def get_best_sample_index(self, kdma_values, target_kdmas, selected_choice, misaligned=False, kde_norm=None):
         # Use max likelihood as distance from a sample to the distribution because JS is disitribution to distribution
         ml_alignment_function = MaxLikelihoodKdeAlignment()
         return ml_alignment_function.get_best_sample_index(kdma_values, target_kdmas, selected_choice, misaligned=misaligned, kde_norm=kde_norm)
