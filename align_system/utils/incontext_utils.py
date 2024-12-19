@@ -15,7 +15,9 @@ from align_system.prompt_engineering.outlines_prompts import (
     action_selection_prompt,
     scenario_state_description_with_relevant_char_info,
     comparative_kdma_score_prediction_prompt,
-    comparative_kdma_score_prediction_json_schema
+    comparative_kdma_score_prediction_json_schema,
+    relevance_classification_prompt,
+    relevance_classification_json_schema
 )
 
 
@@ -93,6 +95,79 @@ class IncontextExampleGenerator(object, metaclass=ABCMeta):
                             kdma_values.append(None)
                         else:
                             kdma_values.append(label[sys_kdma_name])
+                    example = {'state':state, 'actions': actions, 'choices':choices, 'kdma_values':kdma_values}
+                    incontext_data[sys_kdma_name].append(example)
+
+            # Normalize ground truth KDMA values
+            if 'normalization' in self.incontext_settings:
+                if self.incontext_settings['normalization'] is not None and self.incontext_settings['normalization'] != 'rawscores':
+                    if self.incontext_settings['normalization'] == 'globalnorm':
+                        incontext_data = self._global_normalization(incontext_data)
+                    elif self.incontext_settings['normalization'] == 'localnorm':
+                        incontext_data = self._local_normalization(incontext_data)
+                    else:
+                        raise ValueError(f'{self.incontext_settings["normalization"]} is not a valid incontext normalization option. '
+                                        'Please use "globalnorm" or "localnorm".')
+
+        return incontext_data
+
+    def _read_relevance_icl_dataset_files(self):
+        '''
+        Helper function for set_icl_datasets() - reads dataset files and gets examples for target_kdmas
+        Returns incontext_data dictionary with format:
+            {kdma:[{state, actions, choices, kdma_values}, ...], ...}
+        Unlike _read_icl_dataset_files(), this function includes all dset_files for all kdmas so
+        that examples contain thte case where a KDMA is irrelevant to all responses.
+        '''
+        dset_files = []
+        # For each kdma
+        for target_kdma in self.target_kdmas:
+            sys_kdma_name = target_kdma['kdma']
+            # Check if we have dataset files for the target KDMA
+            if sys_kdma_name not in self.incontext_settings["datasets"]:
+                raise RuntimeError(f"No incontext datasets are provided for targeted kdma: {sys_kdma_name}")
+            # Add examples for each dataset file
+            kdma_dset_files = self.incontext_settings["datasets"][sys_kdma_name]
+            # Add to list
+            if isinstance(kdma_dset_files, list):
+                dset_files.extend(kdma_dset_files)
+            else:
+                dset_files.append(kdma_dset_files)
+        # remove potential duplicates
+        dset_files = list(set(dset_files))
+
+        incontext_data = {}
+        for target_kdma in self.target_kdmas:
+            sys_kdma_name = target_kdma['kdma']
+            incontext_data[sys_kdma_name] = []
+            # For each dataset file
+            for dset_f in dset_files:
+                with open(dset_f) as f:
+                    dset = json.load(f)
+                # Load each example in the dataset file
+                for icl_sample in dset:
+                    # Get state and actions
+                    state, actions = hydrate_scenario_state(icl_sample["input"])
+                    labels = icl_sample["label"]
+                    if self.incontext_settings.sort_actions:
+                        # Impose a fixed ordering of available actions and labels to help with determinism
+                        combined = list(zip(actions, labels))
+                        combined_sorted = sorted(combined, key=lambda x: x[0].unstructured)
+                        actions, labels = zip(*combined_sorted)
+                    # Get choices
+                    choices = adm_utils.format_choices(
+                        [a.unstructured for a in actions],
+                        actions,
+                        state
+                    )
+                    # Get KDMA_values
+                    kdma_values = []
+                    for label in labels:
+                        if sys_kdma_name not in label:
+                            kdma_values.append(None)
+                        else:
+                            kdma_values.append(label[sys_kdma_name])
+
                     example = {'state':state, 'actions': actions, 'choices':choices, 'kdma_values':kdma_values}
                     incontext_data[sys_kdma_name].append(example)
 
@@ -346,8 +421,8 @@ class ComparativeRegressionIncontextExampleGenerator(IncontextExampleGenerator):
 
                 # Get example prompt
                 relevant_fields = []
-                for target_kdma in self.target_kdmas:
-                    relevant_fields.extend(target_kdma['relevant_structured_character_info'])
+                for char_target_kdma in self.target_kdmas:
+                    relevant_fields.extend(char_target_kdma['relevant_structured_character_info'])
                 if 'all_unique' in relevant_fields:
                     character_info = outlines_prompts_utils.get_unique_structured_character_info(example['state'].characters)
                 else:
@@ -360,7 +435,7 @@ class ComparativeRegressionIncontextExampleGenerator(IncontextExampleGenerator):
                     included_icl_choices_with_outcomes[choice] = {'predicted_outcome':None}
                 icl_prompt = comparative_kdma_score_prediction_prompt(icl_scenario_description,
                                                                     included_icl_choices_with_outcomes,
-                                                                    sys_kdma_name)
+                                                                    target_kdma['name'])
 
                 # Add example
                 icl_datasets[sys_kdma_name].append({
@@ -466,3 +541,116 @@ class ComparativeRegressionIncontextExampleGenerator(IncontextExampleGenerator):
         cot_reasoning += f"{choice} would score a {expected_value} for the the principle of {target_kdma['name']}."
 
         return cot_reasoning
+
+
+class RelevanceIncontextExampleGenerator(IncontextExampleGenerator):
+    def set_icl_datasets(self):
+        icl_datasets = {}
+        incontext_data = self._read_relevance_icl_dataset_files()
+
+        # Add each target to icl_datasets
+        for target_kdma in self.target_kdmas:
+            icl_datasets[target_kdma['kdma']] = []
+            kdma_incontext_data = incontext_data[target_kdma['kdma']]
+
+            # Add each examples to icl_datasets
+            for example in kdma_incontext_data:
+                # Get example response
+                icl_response = {}
+                included_choices = []
+                for action, choice, kdma_value in zip(example['actions'], example['choices'], example["kdma_values"]):
+                    icl_response[choice] = {}
+                    if kdma_value is not None:
+                        icl_response[choice]['reasoning'] = self.get_relevant_chain_of_thought_reasoning(target_kdma, choice)
+                        icl_response[choice]['relevant'] = 'yes'
+                    else:
+                        # if action has character, use character-based irrelevant COT reasoning
+                        if hasattr(action, 'character_id') and action.character_id is not None:
+                            icl_response[choice]['reasoning'] = self.get_irrelevant_chain_of_thought_reasoning(target_kdma, choice)
+                        # else add generic COT reasoning
+                        else:
+                            icl_response[choice]['reasoning'] = f'Selecting this response does not require considering {target_kdma['name']}.'
+                        icl_response[choice]['relevant'] = 'no'
+                    included_choices.append(choice)
+                # Check if response is valid against json schema
+                correct_schema = json.loads(relevance_classification_json_schema(included_choices, target_kdma["factor"]))
+                validate(instance=icl_response, schema=correct_schema)
+
+                # Get example prompt
+                relevant_fields = []
+                for char_target_kdma in self.target_kdmas:
+                    relevant_fields.extend(char_target_kdma['relevant_structured_character_info'])
+                if 'all_unique' in relevant_fields:
+                    character_info = outlines_prompts_utils.get_unique_structured_character_info(example['state'].characters)
+                else:
+                    character_info = outlines_prompts_utils.get_relevant_structured_character_info(example['state'].characters, self.target_kdmas)
+                icl_scenario_description = scenario_state_description_with_relevant_char_info(example['state'], character_info)
+                # Only include choices in the prompt if they are in the response
+                included_icl_choices_with_outcomes = {}
+                for choice in included_choices:
+                    # TODO: Include outcome prediction for ICL examples?
+                    included_icl_choices_with_outcomes[choice] = {'predicted_outcome':None}
+                icl_prompt = relevance_classification_prompt(icl_scenario_description,
+                                                                    included_icl_choices_with_outcomes,
+                                                                    target_kdma['name'])
+                # Add example
+                icl_datasets[target_kdma['kdma']].append({
+                    "state": example["state"],
+                    "scenario_description": icl_scenario_description,
+                    "prompt": icl_prompt,
+                    "response": icl_response,
+                    "actions": example['actions']
+                    })
+
+        self.icl_datasets = icl_datasets
+
+    def get_relevant_chain_of_thought_reasoning(self, target_kdma, choice):
+        '''
+        Helper function for set_icl_datasets() - constructs example reasoning statements for relevant responses
+        '''
+        # Moral deserivngess or moral judgement
+        if target_kdma['kdma'] == 'MoralDesert' or  target_kdma['kdma'] == 'Moral judgement':
+            cot_reasoning = f'The response is relevant because the patients are not equally morally deserving, so moral judgment is a consideration in choosing {choice}'
+
+        # Ingroup bias
+        elif target_kdma['kdma'] == 'Ingroup Bias':
+            cot_reasoning = f'The response is relevant because the patients are not in the same group, so ingroup bias is a consideration in choosing {choice}'
+
+        # QoL
+        elif target_kdma['kdma'] == 'QualityOfLife':
+            cot_reasoning = f'The response is relevant because the patients will not have the same quality of life post treatment, so quality of life is a consideration in choosing {choice}'
+
+        # VoL
+        elif target_kdma['kdma'] == 'PerceivedQuantityOfLivesSaved':
+            cot_reasoning = f'The response is relevant because the patients do not have the same likelihood of survival, so perceived quantity of lives saved is a consideration in choosing {choice}'
+
+        else:
+            raise RuntimeError(f"Relevance ICL is not implemented for {target_kdma['kdma']}")
+
+        return cot_reasoning
+
+    def get_irrelevant_chain_of_thought_reasoning(self, target_kdma, choice):
+        '''
+        Helper function for set_icl_datasets() - constructs example reasoning statements for irrelevant responses
+        '''
+        # Moral deserivngess or moral judgement
+        if target_kdma['kdma'] == 'MoralDesert' or  target_kdma['kdma'] == 'Moral judgement':
+            cot_reasoning = f'The response is irrelevant because the patients are equally morally deserving, so moral judgment is not a consideration in choosing {choice}'
+
+        # Ingroup bias
+        elif target_kdma['kdma'] == 'Ingroup Bias':
+            cot_reasoning = f'The response is irrelevant because the patients are in the same group, so ingroup bias is a not consideration in choosing {choice}'
+
+        # QoL
+        elif target_kdma['kdma'] == 'QualityOfLife':
+            cot_reasoning = f'The response is irrelevant because the patients will have the same quality of life post-treatment, so quality of life is a not consideration in choosing {choice}'
+
+        # VoL
+        elif target_kdma['kdma'] == 'PerceivedQuantityOfLivesSaved':
+            cot_reasoning = f'The response is irrelevant because the patients have similar likelihood of survival, so perceived quantity of lives saved is not a consideration in choosing {choice}'
+
+        else:
+            raise RuntimeError(f"Relevance ICL is not implemented for {target_kdma['kdma']}")
+
+        return cot_reasoning
+

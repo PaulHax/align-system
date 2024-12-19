@@ -16,6 +16,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * Added multi-KDMA alignment targets for testing
 * Added Outlines based Personas ADM
 * Added dedicated utility function for inferring alignment target type
+* Added multi-KDMA alignment function that weights distance by relevance
+* Added a relevance oracle ADM
+* Added an optional relevance prediction step with ICL to the comparative regression ADM
+* Added the option to use relevance weighted alignment function to Kaleido ADM
 
 ### Changed
 

@@ -446,6 +446,19 @@ def comparative_outcomes_system_prompt():
     """
 
 @outlines.prompt
+def relevance_classification_system_prompt(kdma, kdma_description, kdma_scale_factor):
+    """
+    You are a specialized algorithm tasked with considering medical triage decisions \
+    in a military medical context.  Given a scenario and list of possible responses, \
+    your job is to assess the relevance of {{kdma}} to each response.
+
+    {{kdma_description}}
+
+    For each response, provide a sentence of reasoning and your answer of either \
+    yes or no, where yes means {{kdma}} is relevant and no means {{kdma}} is irrelevant.
+    """
+
+@outlines.prompt
 def outcome_prediction_prompt(situation, choices, choice):
     """
     Consider the following scenario:
@@ -633,6 +646,21 @@ def comparative_kdma_score_prediction_prompt(situation, choices, kdma):
     """
 
 @outlines.prompt
+def relevance_classification_prompt(situation, choices, kdma):
+    """
+    Consider the following scenario and responses:
+    {{ situation }}
+
+    RESPONSES:
+    {% for choice in choices %}
+    - {{ choice }}
+    {% endfor %}
+
+    Inidicate whether or not each response is relevant to {{kdma}} with either yes (relevant) \
+    or no (irrelevant) and provide one sentence of reasoning.
+    """
+
+@outlines.prompt
 def kdma_score_prediction_json_schema():
     '''
     {"properties": {
@@ -672,6 +700,31 @@ def comparative_kdma_score_prediction_json_schema(choices, kdma_scale_factor):
                     }
                 },
                 "required": ["score", "reasoning"]
+            }
+            for choice in choices
+        },
+        "required": list(choices)
+    }
+    return json.dumps(json_schema)
+
+def relevance_classification_json_schema(choices, kdma_scale_factor):
+    json_schema = {
+        "type": "object",
+        "properties": {
+            choice: {
+                "type": "object",
+                "properties": {
+                    "reasoning": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 512
+                    },
+                    "relevant": {
+                        "type": "string",
+                        "enum": ["yes", "no"]
+                    }
+                },
+                "required": ["relevant", "reasoning"]
             }
             for choice in choices
         },

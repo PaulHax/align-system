@@ -202,7 +202,7 @@ class KaleidoADM(AlignedDecisionMaker, ActionBasedADM):
 
         return output_choice_idx
 
-    def force_choice_with_alignment_fn(self, kaleido_results, choices, target_kdmas, alignment_fn):
+    def force_choice_with_alignment_fn(self, kaleido_results, choices, target_kdmas, alignment_fn, predict_relevance=False):
         kdma_values = {}
         relevance_values = {}
         for group_key, group_records in kaleido_results.groupby(['choice', 'KDMA']):
@@ -214,9 +214,12 @@ class KaleidoADM(AlignedDecisionMaker, ActionBasedADM):
                 [float(v) for v in (group_records['estimated_kdma_value'] / 10)]
 
             relevance_values.setdefault(choice, {})[kdma] =\
-                [float(v) for v in (group_records['estimated_kdma_value'] / 10)]
+                [float(v) for v in (group_records['relevant'])]
 
-        selected_choice, probs = alignment_fn(kdma_values, target_kdmas)
+        if predict_relevance:
+            selected_choice, probs = alignment_fn(kdma_values, relevance_values, target_kdmas)
+        else:
+            selected_choice, probs = alignment_fn(kdma_values, target_kdmas)
 
         # NOTE ** Not making use of relevance at all here, could
         # consider adding a weighting argument to the alignment
@@ -350,38 +353,60 @@ class KaleidoADM(AlignedDecisionMaker, ActionBasedADM):
             if 'kdes' not in target_kdma or target_kdma["kdes"] is None:
                 all_kde_targets = False
 
-        # Select aligned choice
-        if all_scalar_targets:
-            alignment_function = alignment_utils.AvgDistScalarAlignment()
-        elif all_kde_targets:
-            if not kwargs.get('use_alignment_utils', True):
-                raise RuntimeError("Can't handle KDE alignment targets "
-                                   "without `use_alignment_utils` "
-                                   "(set to True and retry)")
+        predict_relevance = kwargs.get('predict_relevance', False)
 
-            distribution_matching = kwargs.get('distribution_matching', 'sample')
+        # Select aligned choice with relevance
+        if predict_relevance:
+            if all_scalar_targets:
+                alignment_function = alignment_utils.RelevanceAvgDistScalarAlignment()
+            # TODO
+            # elif all_kde_targets:
+            #     if not kwargs.get('use_alignment_utils', True):
+            #             raise RuntimeError("Can't handle KDE alignment targets "
+            #                             "without `use_alignment_utils` "
+            #                             "(set to True and retry)")
 
-            if distribution_matching == 'sample':
-                alignment_function = alignment_utils.MinDistToRandomSampleKdeAlignment()
-            elif distribution_matching == 'max_likelihood':
-                alignment_function = alignment_utils.MaxLikelihoodKdeAlignment()
-            elif distribution_matching == 'js_divergence':
-                alignment_function = alignment_utils.JsDivergenceKdeAlignment()
+            #     distribution_matching = kwargs.get('distribution_matching', 'sample')
+            #     alignment_function =
             else:
-                raise RuntimeError(distribution_matching, "distribution matching function unrecognized.")
+                # TODO: Currently we assume all targets either have scalar values or KDES,
+                #       Down the line, we should extend to handling multiple targets of mixed types
+                raise ValueError("ADM does not currently support a mix of scalar and KDE targets with relevance.")
 
-            alignment_function = partial(alignment_function, kde_norm=kwargs.get('kde_norm', 'globalnorm'))
+        # Select aligned choice without relevance
         else:
-            # TODO: Currently we assume all targets either have scalar values or KDES,
-            #       Down the line, we should extend to handling multiple targets of mixed types
-            raise ValueError("ADM does not currently support a mix of scalar and KDE targets.")
+            if all_scalar_targets:
+                alignment_function = alignment_utils.AvgDistScalarAlignment()
+            elif all_kde_targets:
+                if not kwargs.get('use_alignment_utils', True):
+                    raise RuntimeError("Can't handle KDE alignment targets "
+                                    "without `use_alignment_utils` "
+                                    "(set to True and retry)")
+
+                distribution_matching = kwargs.get('distribution_matching', 'sample')
+
+                if distribution_matching == 'sample':
+                    alignment_function = alignment_utils.MinDistToRandomSampleKdeAlignment()
+                elif distribution_matching == 'max_likelihood':
+                    alignment_function = alignment_utils.MaxLikelihoodKdeAlignment()
+                elif distribution_matching == 'js_divergence':
+                    alignment_function = alignment_utils.JsDivergenceKdeAlignment()
+                else:
+                    raise RuntimeError(distribution_matching, "distribution matching function unrecognized.")
+
+                alignment_function = partial(alignment_function, kde_norm=kwargs.get('kde_norm', 'globalnorm'))
+            else:
+                # TODO: Currently we assume all targets either have scalar values or KDES,
+                #       Down the line, we should extend to handling multiple targets of mixed types
+                raise ValueError("ADM does not currently support a mix of scalar and KDE targets.")
 
         if kwargs.get('use_alignment_utils', True):
             selected_choice_idx = self.force_choice_with_alignment_fn(
                     kaleido_results,
                     choices_unstructured,
                     target_kdmas,
-                    alignment_function)
+                    alignment_function,
+                    predict_relevance)
         else:
             target_kdmas_to_values = {t['kdma']: t['value'] for t in target_kdmas}
 

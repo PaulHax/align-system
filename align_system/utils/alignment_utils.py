@@ -9,7 +9,7 @@ from align_system.utils import logging
 from swagger_client.models import KDMAValue
 
 log = logging.getLogger(__name__)
-
+eps = 1e-16
 
 class AlignmentTargetType(Enum):
     SCALAR = 1
@@ -350,6 +350,145 @@ class CumulativeJsDivergenceKdeAlignment(AlignmentFunction):
         # Use max likelihood as distance from a sample to the distribution because JS is disitribution to distribution
         ml_alignment_function = MaxLikelihoodKdeAlignment()
         return ml_alignment_function.get_best_sample_index(kdma_values, target_kdmas, selected_choice, misaligned=misaligned, kde_norm=kde_norm)
+
+
+'''
+Abstract class for alignment function with relevance
+Inputs:
+    - kdma_values: Dictionary of choices and KDMA score(s) (between 0 and 1)
+        For example: {'Treat Patient A':{'Moral judgement': [0.1,0.1,0.2], ...}, 'Treat Patient B':{...}, ... }
+    - relevances: Dictionary of choices and KDMA relevance (0 or 1)
+        For example: {'Treat Patient A':{'Moral judgement': 1, ...}, 'Treat Patient B':{...}, ... }
+    - target_kdmas: A list of KDMA alignment targets (typically alignment_target.kdma_values)
+        For example: [{'kdma':'Moral judgement', 'value':0}, ...] or [{'kdma':'Moral judgement', 'kdes':{...}}, ...]
+    - misaligned (optional): If true will pick the least aligned option (default is false)
+    - kde_norm (optional): Normalization to use if target is KDE
+        Options: 'rawscores', 'localnorm', 'globalnorm', 'globalnormx_localnormy'
+    - probabilisitic (optional): If true, will select action probabilistically, weighted by distances
+        to alignment target (default is false)
+Returns:
+    - The selected choice from kdma_values.keys()
+        For example: 'Treat Patient A'
+    - The probability associated with each choice
+'''
+class RelevanceAlignmentFunction(ABC):
+    @abstractmethod
+    def __call__(self, kdma_values, relevances, target_kdmas, misaligned=False, kde_norm=None, probabilistic=False):
+        '''
+        1. Make sure the data is in the right format (scalar vs KDE target)
+        2. Compute the distance of each choice to the targets
+        3. Call _select_min_dist_choice() to get selected choice and probs
+        4. Optionally find the index of the best sample for justification
+        '''
+        pass
+    # Note: for relevance alignment this function takes probs (which are weighted by relevance) directly rather than dists
+    def _select_min_dist_choice(self, choices, probs, misaligned=False, probabilistic=False):
+        if len(probs) != len(choices):
+            raise RuntimeError("A probability must be provided for each choice during alignment")
+        if len(choices) == 0:
+            raise RuntimeError("No choices provided")
+
+        if not misaligned:
+            # Normalize probs
+            probs = [prob/(sum(probs)+eps) for prob in probs]
+        else:
+            # For misaligned, want to minimize probs, so
+            # maximize over inverted probs
+            inv_probs = [1/(prob+eps) for prob in probs]
+
+            # Normalize probs
+            probs = [prob/(sum(inv_probs)+eps) for prob in inv_probs]
+
+        if probabilistic:
+            selected_choice = np.random.choice(choices, p=probs)
+        else:
+            max_prob = max(probs)
+            max_actions = [idx for idx, p in enumerate(probs) if p == max_prob]
+            # Randomly chose one of the max probability actions
+            # TODO could add some tie breaking logic here
+            selected_choice = choices[random.choice(max_actions)]
+
+
+        probs_dict = {c: p for c, p in zip(choices, probs)}
+
+        return selected_choice, probs_dict
+
+    # Given the selected choice, get the index of the sample closest to the target
+    def get_best_sample_index(self, kdma_values, target_kdmas, selected_choice, misaligned=False, kde_norm=None):
+        pass
+
+class RelevanceAvgDistScalarAlignment(RelevanceAlignmentFunction):
+    def __call__(self, kdma_values, relevances, target_kdmas, misaligned=False, probabilistic=False):
+        '''
+        Selects a choice by first averaging score across samples,
+        then selecting the one with minimal MSE to the scalar target
+        weighted by predicted relevance.
+        Returns the selected choice.
+        '''
+        kdma_values = _handle_single_value(kdma_values, target_kdmas)
+        _check_if_targets_are_scalar(target_kdmas)
+
+        # Get distance from average of predicted scores to targets
+        probs = []
+        choices = list(kdma_values.keys())
+        for choice in choices:
+            prob = 0.
+            for target_kdma in target_kdmas:
+                if isinstance(target_kdma, KDMAValue):
+                    target_kdma = target_kdma.to_dict()
+                kdma = target_kdma['kdma']
+                score_samples = kdma_values[choice][kdma]
+                average_score = (sum(score_samples) / len(score_samples))
+                relevance = relevances[choice][kdma]
+                distance = _euclidean_distance(target_kdma['value'], average_score)
+                prob += relevance * (1/(distance+eps)) # weight by relevance 
+            probs.append(prob)
+        selected_choice, probs = self._select_min_dist_choice(choices, probs, misaligned, probabilistic=probabilistic)
+        return selected_choice, probs
+
+    def get_best_sample_index(self, kdma_values, target_kdmas, selected_choice, misaligned=False):
+        # Use max likelihood as distance from a sample to the distribution because JS is disitribution to distribution
+        avg_alignment_function = AvgDistScalarAlignment()
+        return avg_alignment_function.get_best_sample_index(kdma_values, target_kdmas, selected_choice, misaligned=misaligned)
+
+
+class RelevanceCumulativeJsDivergenceKdeAlignment(RelevanceAlignmentFunction):
+    def __call__(self, kdma_values, relevances, target_kdmas, choice_history, misaligned=False, kde_norm='globalnorm', priornorm_factor=0.5, probabilistic=False):
+        '''
+        Creates potential cumulative KDEs (with history) for each choice by adding mean of sampled score predictions
+        Returns the selected choice resulting in cumulative KDE with minimum JS divergence to target KDE
+        '''
+        kdma_values = _handle_single_value(kdma_values, target_kdmas)
+        relevances = _handle_single_value(relevances, target_kdmas)
+        _check_if_targets_are_kde(target_kdmas)
+
+        # Get predicted KDE for each choice and get distance to target
+        probs = []
+        choices = list(kdma_values.keys())
+        for choice in choices:
+            prob = 0.
+            for target_kdma in target_kdmas:
+                if isinstance(target_kdma, KDMAValue):
+                    target_kdma = target_kdma.to_dict()
+                if target_kdma['kdma'] not in choice_history:
+                    choice_history[target_kdma['kdma']] = []
+                target_kde = kde_utils.load_kde(target_kdma, kde_norm, priornorm_factor)
+                predicted_samples = kdma_values[choice][target_kdma['kdma']]
+                history_and_predicted_samples = choice_history[target_kdma['kdma']] + [np.mean(predicted_samples)]
+                predicted_kde = kde_utils.get_kde_from_samples(history_and_predicted_samples)
+                distance = kde_utils.js_distance(target_kde, predicted_kde, 100)
+                rel_samples = relevances[choice][target_kdma['kdma']]
+                average_relevance = (sum(rel_samples) / len(rel_samples))
+                prob += average_relevance * (1/(distance+eps)) # weight by relevance
+            probs.append(prob)
+        selected_choice, probs = self._select_min_dist_choice(choices, probs, misaligned, probabilistic=probabilistic)
+        return selected_choice, probs
+
+    def get_best_sample_index(self, kdma_values, target_kdmas, selected_choice, misaligned=False, kde_norm=None):
+        # Use max likelihood as distance from a sample to the distribution because JS is disitribution to distribution
+        ml_alignment_function = MaxLikelihoodKdeAlignment()
+        return ml_alignment_function.get_best_sample_index(kdma_values, target_kdmas, selected_choice, misaligned=misaligned, kde_norm=kde_norm)
+
 
 # If score is a single value, then set it to a list containing that value
 def _handle_single_value(kdma_values, target_kdmas):
