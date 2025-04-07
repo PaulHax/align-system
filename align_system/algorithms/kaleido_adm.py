@@ -77,6 +77,9 @@ KnownDistanceFunctions = [RelevanceWeightedDistance,
                           MeanDistance,
                           MeanDistance2]
 
+# Example alternate template without `other_choices`:
+# template = 'Choosing to "{{choice}}".  In the context of the following scenario: {{scene_state}} {{mission}} {{decision_environment}} With the following casualties:\n{{characters_str}}'
+ACTION_TEMPLATE = 'What action do you take? "{{choice}}" instead of {{other_choices}}.  In the context of the following scenario: {{scene_state}} {{mission}} {{decision_environment}} With the following casualties:\n{{characters_str}}'
 
 class KaleidoADM(AlignedDecisionMaker, ActionBasedADM):
     def __init__(self, **kwargs):
@@ -289,7 +292,31 @@ class KaleidoADM(AlignedDecisionMaker, ActionBasedADM):
         return {'choice': selected_choice_idx,
                 'predicted_kdma_values': predicted_kdma_values}
 
+    @staticmethod
+    def get_partial_template(scenario_state, action_template=ACTION_TEMPLATE, **kwargs):
+        characters_str = '\n'.join(['{} ({}): {}'.format(c.name, c.id, c.unstructured) for c in scenario_state.characters])
+        mission_str = '' if scenario_state.mission is None else scenario_state.mission.unstructured
+
+        partial_template = format_template(
+            action_template,
+            partial=True,
+            allow_extraneous=True,
+            scene_state=scenario_state.unstructured,
+            mission=mission_str,
+            decision_environment=scenario_state.environment.decision_environment.unstructured.strip(),
+            characters_str=characters_str)
+        return partial_template
+
     def choose_action(self, scenario_state, available_actions, alignment_target, **kwargs):
+        partial_template = KaleidoADM.get_partial_template(scenario_state, **kwargs)
+
+        choices_unstructured = [a.unstructured for a in available_actions]
+        choices_unstructured = adm_utils.format_choices(
+            choices_unstructured,
+            available_actions,
+            scenario_state
+            )
+
         kdma_descriptions_map = None
         if 'kdma_descriptions_map' in kwargs:
             if isinstance(kwargs['kdma_descriptions_map'], str):
@@ -297,38 +324,6 @@ class KaleidoADM(AlignedDecisionMaker, ActionBasedADM):
                     kdma_descriptions_map = yaml.safe_load(f)
             elif isinstance(kwargs['kdma_descriptions_map'], dict):
                 kdma_descriptions_map = kwargs['kdma_descriptions_map']
-
-        if 'action_template' in kwargs:
-            # Example alternate template without `other_choices`:
-            # template = 'Choosing to "{{choice}}".  In the context of the following scenario: {{scene_state}} {{mission}} {{decision_environment}} With the following casualties:\n{{characters_str}}'
-            template = kwargs['action_template']
-        else:
-            template = 'What action do you take? "{{choice}}" instead of {{other_choices}}.  In the context of the following scenario: {{scene_state}} {{mission}} {{decision_environment}} With the following casualties:\n{{characters_str}}'
-
-        characters_str = '\n'.join(['{} ({}): {}'.format(c.name, c.id, c.unstructured) for c in scenario_state.characters])
-        if scenario_state.mission is None:
-            mission_str = ''
-        else:
-            mission_str = scenario_state.mission.unstructured
-
-        partial_template = format_template(
-            template,
-            partial=True,
-            scene_state=scenario_state.unstructured,
-            mission=mission_str,
-            decision_environment=scenario_state.environment.decision_environment.unstructured.strip(),
-            characters_str=characters_str)
-
-        # Re-using the OutlinesTransformersADM format choices option
-        # to ensure unstructured choice text is unique.  TODO: move
-        # this function out to utilities somewhere as it's generally
-        # useful
-        choices_unstructured = [a.unstructured for a in available_actions]
-        choices_unstructured = adm_utils.format_choices(
-            choices_unstructured,
-            available_actions,
-            scenario_state
-            )
 
         target_kdmas = alignment_target.kdma_values
 
